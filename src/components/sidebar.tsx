@@ -1,144 +1,147 @@
-"use client"
+"use client";
 
-import Link from 'next/link'
-import { usePathname } from 'next/navigation'
+import Link from "next/link";
+import { usePathname, useRouter } from "next/navigation";
 import {
   LayoutDashboard,
-  Facebook,
-  Globe,
+  Search,
   Calculator,
-  ChevronRight,
   Settings,
   LogOut,
-} from 'lucide-react'
-import { cn } from '@/lib/utils'
+  Zap,
+  Users,
+  CreditCard,
+  BarChart2,
+  Bell,
+  Webhook,
+  FileText,
+} from "lucide-react";
+import { cn } from "@/lib/utils";
+import { logout } from "@/lib/auth-service";
 
-// ----------------------------------------
-// MENU ITEMS
-// ----------------------------------------
+function MetaIcon({ className }: { className?: string }) {
+  return (
+    <svg viewBox="0 0 24 24" className={className} fill="currentColor">
+      <path d="M12 2.04c-5.5 0-10 4.49-10 10.02 0 5 3.66 9.15 8.44 9.9v-7H7.9v-2.9h2.54V9.85c0-2.51 1.49-3.89 3.78-3.89 1.09 0 2.23.19 2.23.19v2.47h-1.26c-1.24 0-1.63.77-1.63 1.56v1.88h2.78l-.45 2.9h-2.33v7a10 10 0 0 0 8.44-9.9c0-5.53-4.5-10.02-10-10.02z" />
+    </svg>
+  );
+}
 
-const menuItems = [
+const sections = [
   {
-    path: '/dashboard',
-    label: 'Visão Geral',
-    icon: LayoutDashboard,
+    label: "Principal",
+    items: [
+      { href: "/dashboard", label: "Visão Geral", icon: LayoutDashboard },
+    ],
   },
   {
-    path: '/dashboard/meta-ads',
-    label: 'Meta Ads',
-    icon: Facebook,
+    label: "Canais",
+    items: [
+      { href: "/dashboard/meta-ads", label: "Meta Ads", icon: MetaIcon },
+      { href: "/dashboard/google-ads", label: "Google Ads", icon: Search },
+    ],
   },
   {
-    path: '/dashboard/google-ads',
-    label: 'Google Ads',
-    icon: Globe,
+    label: "Gestão",
+    items: [
+      { href: "/dashboard/clientes", label: "Clientes", icon: Users },
+      { href: "/dashboard/pagamentos", label: "Pagamentos", icon: CreditCard },
+      { href: "/dashboard/relatorios", label: "Relatórios", icon: BarChart2 },
+    ],
   },
   {
-    path: '/dashboard/planning',
-    label: 'Planejamento',
-    icon: Calculator,
+    label: "Sistema",
+    items: [
+      { href: "/dashboard/webhooks", label: "Webhooks", icon: Webhook },
+      { href: "/dashboard/notificacoes", label: "Notificações", icon: Bell },
+      { href: "/dashboard/docs", label: "Documentação", icon: FileText },
+    ],
   },
-]
-
-// ----------------------------------------
-// SIDEBAR COMPONENT
-// ----------------------------------------
+  {
+    label: "Planejamento",
+    items: [
+      { href: "/dashboard/planning", label: "Eng. Reversa", icon: Calculator },
+    ],
+  },
+];
 
 export function Sidebar() {
-  const pathname = usePathname()
+  const pathname = usePathname();
+  const router = useRouter();
+
+  async function handleLogout() {
+    await logout();
+    router.push("/login");
+  }
+
+  function isActive(href: string) {
+    return href === "/dashboard"
+      ? pathname === "/dashboard"
+      : pathname.startsWith(href);
+  }
 
   return (
-    <aside className="fixed left-0 top-0 h-screen w-64 bg-secondary border-r border-border flex flex-col z-50">
-      {/* ---------------------------------------- */}
-      {/* BRANDING / LOGO */}
-      {/* ---------------------------------------- */}
-      <div className="px-6 py-8 border-b border-border">
-        <div className="flex items-center space-x-3">
-          {/* Logo Icon */}
-          <div className="w-10 h-10 bg-gradient-to-br from-brand-purple to-brand-orange rounded-lg flex items-center justify-center">
-            <span className="text-white font-bold text-xl">G</span>
-          </div>
-          
-          {/* Logo Text */}
-          <h1 className="text-2xl font-bold text-white tracking-tight">
-            Growfy
-          </h1>
+    <aside className="flex h-screen w-[200px] shrink-0 flex-col border-r border-white/[0.06] bg-[#08080A]">
+      {/* Logo */}
+      <div className="flex items-center gap-2.5 px-5 h-14 border-b border-white/[0.06]">
+        <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-white">
+          <Zap className="h-3.5 w-3.5 text-[#08080A]" />
         </div>
-        
-        {/* Subtitle */}
-        <p className="text-muted-foreground text-sm mt-2 ml-13">
-          LaunchOS
-        </p>
+        <div>
+          <p className="text-sm font-black text-white leading-none tracking-tight">Growfy</p>
+          <p className="text-[10px] text-white/25 leading-none mt-0.5">LaunchOS</p>
+        </div>
       </div>
 
-      {/* ---------------------------------------- */}
-      {/* NAVIGATION MENU */}
-      {/* ---------------------------------------- */}
-      <nav className="flex-1 px-3 py-6 overflow-y-auto">
-        <ul className="space-y-1">
-          {menuItems.map((item) => {
-            const Icon = item.icon
-            const isActive = pathname === item.path
-            
-            return (
-              <li key={item.path}>
-                <Link
-                  href={item.path}
-                  className={cn(
-                    "group flex items-center justify-between px-4 py-3 rounded-lg transition-all duration-200",
-                    isActive
-                      ? "bg-primary text-white shadow-lg shadow-primary/20"
-                      : "text-muted-foreground hover:text-white hover:bg-surface"
-                  )}
-                >
-                  {/* Icon + Label */}
-                  <div className="flex items-center space-x-3">
-                    <Icon
-                      size={20}
-                      className="transition-transform group-hover:scale-110"
-                    />
-                    <span className="font-medium text-sm">
-                      {item.label}
-                    </span>
-                  </div>
-
-                  {/* Chevron Indicator */}
-                  <ChevronRight
-                    size={16}
-                    className="opacity-0 group-hover:opacity-100 transition-opacity"
-                  />
-                </Link>
-              </li>
-            )
-          })}
-        </ul>
+      {/* Nav */}
+      <nav className="flex-1 overflow-y-auto px-3 py-4 space-y-5">
+        {sections.map((section) => (
+          <div key={section.label}>
+            <p className="px-2 mb-1.5 text-[9px] font-bold uppercase tracking-[0.2em] text-white/20">
+              {section.label}
+            </p>
+            <div className="space-y-0.5">
+              {section.items.map((item) => {
+                const active = isActive(item.href);
+                const Icon = item.icon;
+                return (
+                  <Link
+                    key={item.href}
+                    href={item.href}
+                    className={cn(
+                      "flex items-center gap-2.5 rounded-lg px-2.5 py-2 text-xs font-medium transition-all",
+                      active
+                        ? "bg-white text-[#08080A]"
+                        : "text-white/40 hover:bg-white/[0.05] hover:text-white/70"
+                    )}
+                  >
+                    <Icon className="h-3.5 w-3.5 shrink-0" />
+                    <span>{item.label}</span>
+                  </Link>
+                );
+              })}
+            </div>
+          </div>
+        ))}
       </nav>
 
-      {/* ---------------------------------------- */}
-      {/* FOOTER */}
-      {/* ---------------------------------------- */}
-      <div className="px-3 py-4 border-t border-border space-y-2">
-        {/* Settings */}
+      {/* Bottom */}
+      <div className="border-t border-white/[0.06] px-3 py-3 space-y-0.5">
         <Link
           href="/dashboard/settings"
-          className="flex items-center space-x-3 px-4 py-2 rounded-lg text-muted-foreground hover:text-white hover:bg-surface transition-colors"
+          className="flex items-center gap-2.5 rounded-lg px-2.5 py-2 text-xs font-medium text-white/30 hover:bg-white/[0.05] hover:text-white/60 transition-all"
         >
-          <Settings size={18} />
-          <span className="text-sm font-medium">Configurações</span>
+          <Settings className="h-3.5 w-3.5 shrink-0" />
+          Configurações
         </Link>
-
-        {/* Logout */}
         <button
-          onClick={() => {
-            // TODO: Implementar logout Firebase
-            console.log('Logout')
-          }}
-          className="w-full flex items-center space-x-3 px-4 py-2 rounded-lg text-muted-foreground hover:text-destructive hover:bg-surface transition-colors"
+          onClick={handleLogout}
+          className="w-full flex items-center gap-2.5 rounded-lg px-2.5 py-2 text-xs font-medium text-white/30 hover:bg-white/[0.05] hover:text-white/60 transition-all"
         >
-          <LogOut size={18} />
-          <span className="text-sm font-medium">Sair</span>
+          <LogOut className="h-3.5 w-3.5 shrink-0" />
+          Sair
         </button>
       </div>
     </aside>
-  )
+  );
 }
