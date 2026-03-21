@@ -36,7 +36,7 @@ export default function LoginPage() {
         ? await signInWithEmail(email, password)
         : await signUpWithEmail(email, password);
       if (result.error) setError(result.error);
-      else router.push("/dashboard");
+      else router.push("/workspace");
     } finally { setIsLoading(false); }
   }
 
@@ -46,7 +46,7 @@ export default function LoginPage() {
     try {
       const result = await signInWithGoogle();
       if (result.error) setError(result.error);
-      else router.push("/dashboard");
+      else router.push("/workspace");
     } finally { setIsGoogleLoading(false); }
   }
 
