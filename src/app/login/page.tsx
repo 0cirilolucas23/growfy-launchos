@@ -64,14 +64,14 @@ export default function LoginPage() {
   ];
 
   return (
-    <div className="flex min-h-screen">
+    <div className="flex min-h-screen p-4">
       {/* Left panel */}
       <div className="relative hidden lg:flex lg:w-[52%] flex-col justify-between overflow-hidden p-12"
         style={{ background: "linear-gradient(135deg, #120800 0%, #08080A 50%, #0A0814 100%)" }}>
         
         {/* Ambient glow */}
-        <div className="absolute left-1/3 top-1/3 h-64 w-64 rounded-full bg-[#E85D22]/8 blur-3xl" />
-        <div className="absolute right-1/4 bottom-1/3 h-48 w-48 rounded-full bg-[#5050F2]/6 blur-3xl" />
+        <div className="absolute left-1/3 top-1/3 h-64 w-64 rounded-2xl bg-[#E85D22]/8 blur-3xl" />
+        <div className="absolute right-1/4 bottom-1/3 h-48 w-48 rounded-2xl bg-[#5050F2]/6 blur-3xl" />
 
         {/* Floating circles */}
         {circles.map((c, i) => (
@@ -95,10 +95,10 @@ export default function LoginPage() {
 
         {/* Headline */}
         <div className="relative z-10 space-y-5">
-          <p className="text-xs font-bold uppercase tracking-[0.25em] text-[#E85D22]">LaunchOS</p>
-          <h1 className="text-5xl font-black leading-[1.05] text-white">
+          <p className="text-xs font-bold uppercase tracking-[0.25em] text-[#5050f2]">LaunchOS</p>
+          <h1 className="text-5xl font-semibold leading-[1.05] text-white">
             Inteligência<br />para seus<br />
-            <span className="text-[#E85D22]">lançamentos.</span>
+            <span className="bg-gradient-to-r from-[#f7f8f8] to-[#a5a5a5] text-transparent bg-clip-text inline-block">lançamentos.</span>
           </h1>
           <p className="text-sm leading-relaxed text-white/35 max-w-xs">
             Centralize Meta Ads, Google Ads, Hotmart, Eduzz e Kiwify.
@@ -118,7 +118,7 @@ export default function LoginPage() {
       </div>
 
       {/* Right panel */}
-      <div className="flex flex-1 items-center justify-center bg-[#F7F7F8] px-8 py-12 lg:px-16">
+      <div className="flex flex-1 items-center justify-center bg-[#F7F7F8] px-8 py-12 lg:px-16 rounded-2xl">
         <div className="w-full max-w-[360px]">
           
           {/* Mobile logo */}
@@ -187,12 +187,7 @@ export default function LoginPage() {
               <div>
                 <div className="flex items-center justify-between mb-1.5">
                   <label className="block text-xs font-semibold uppercase tracking-wider text-[#08080A]/50">Senha</label>
-                  {mode === "login" && (
-                    <button type="button" onClick={() => { setMode("reset"); clear(); }}
-                      className="text-xs font-semibold text-[#5050F2] hover:text-[#4040E0] transition-colors">
-                      Esqueceu a senha?
-                    </button>
-                  )}
+                 
                 </div>
                 <div className="relative">
                   <input type={showPassword ? "text" : "password"} value={password}
@@ -204,7 +199,18 @@ export default function LoginPage() {
                     className="absolute right-3 top-1/2 -translate-y-1/2 text-[#08080A]/30 hover:text-[#08080A]/60">
                     {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
                   </button>
+                  
+                  
                 </div>
+                <div className="flex justify-end mt-2 mb-8">
+                    {mode === "login" && (
+                    <button type="button" onClick={() => { setMode("reset"); clear(); }}
+                      className="text-xs font-semibold text-[#5050F2] hover:text-[#4040E0] transition-colors">
+                      Esqueceu a senha?
+                    </button>
+                  )}
+
+                  </div>
               </div>
             )}
 

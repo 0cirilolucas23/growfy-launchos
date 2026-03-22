@@ -42,26 +42,24 @@ export interface MetricsState {
   topProducts: ProductPerformance[];
   isLoading: boolean;
   isRefreshing: boolean;
+  isLive: boolean; // true = Firestore data, false = mock
   error: string | null;
   lastUpdated: Date | null;
 }
 
 export interface UseMetricsOptions {
   dateRange?: DateRange;
-  useMock?: boolean; // force mock data (dev/demo)
-  realtimeEvents?: number; // how many recent events to watch (default: 50)
+  useMock?: boolean;
+  workspaceId?: string | null;
 }
 
 // ─────────────────────────────────────────────
 // Constants
 // ─────────────────────────────────────────────
 
-const DEFAULT_AD_SPEND = 3500; // BRL — replace with real data from Meta Ads webhook
+const DEFAULT_AD_SPEND = 3500;
 const DATE_RANGE_DAYS: Record<DateRange, number> = {
-  "7d": 7,
-  "14d": 14,
-  "30d": 30,
-  "90d": 90,
+  "7d": 7, "14d": 14, "30d": 30, "90d": 90,
 };
 
 // ─────────────────────────────────────────────
@@ -71,25 +69,21 @@ const DATE_RANGE_DAYS: Record<DateRange, number> = {
 function buildMetrics(
   events: WebhookEvent[],
   days: number
-): Omit<MetricsState, "isLoading" | "isRefreshing" | "error" | "lastUpdated"> {
+): Omit<MetricsState, "isLoading" | "isRefreshing" | "isLive" | "error" | "lastUpdated"> {
   const revenue = aggregateRevenue(events);
-
   const conversions = calculateConversionMetrics(events, {
     spend: DEFAULT_AD_SPEND,
-    clicks: Math.round(DEFAULT_AD_SPEND / 2.5), // estimated
+    clicks: Math.round(DEFAULT_AD_SPEND / 2.5),
   });
-
   const ads = calculateAdMetrics(
     DEFAULT_AD_SPEND,
-    Math.round(DEFAULT_AD_SPEND * 80), // estimated impressions
+    Math.round(DEFAULT_AD_SPEND * 80),
     Math.round(DEFAULT_AD_SPEND / 2.5),
     revenue.netRevenue,
-    2.3 // frequency estimate
+    2.3
   );
-
   const chartData = buildChartData(events, days);
 
-  // Build top products
   const productMap = new Map<string, ProductPerformance>();
   for (const event of events) {
     if (event.type !== "purchase" && event.type !== "subscription_start") continue;
@@ -104,11 +98,9 @@ function buildMetrics(
         refundRate: event.status === "refunded" ? 100 : 0,
         conversionRate: event.status === "success" ? 100 : 0,
       });
-    } else {
-      if (event.status === "success") {
-        existing.revenue += event.amount;
-        existing.units += 1;
-      }
+    } else if (event.status === "success") {
+      existing.revenue += event.amount;
+      existing.units += 1;
     }
   }
 
@@ -119,13 +111,9 @@ function buildMetrics(
   return { events, revenue, conversions, ads, chartData, topProducts };
 }
 
-function firestoreDocToEvent(doc: {
-  id: string;
-  data: () => Record<string, unknown>;
-}): WebhookEvent {
-  const data = doc.data();
+function firestoreDocToEvent(id: string, data: Record<string, unknown>): WebhookEvent {
   return {
-    id: doc.id,
+    id,
     source: (data.source as WebhookSource) ?? "manual",
     type: data.type as WebhookEvent["type"],
     amount: (data.amount as number) ?? 0,
@@ -138,9 +126,17 @@ function firestoreDocToEvent(doc: {
       ? data.timestamp.toDate()
       : new Date(data.timestamp as string),
     status: data.status as WebhookEvent["status"],
-    raw: data.raw as Record<string, unknown> | undefined,
   };
 }
+
+const EMPTY_METRICS: Omit<MetricsState, "isLoading" | "isRefreshing" | "isLive" | "error" | "lastUpdated"> = {
+  events: [],
+  revenue: { totalRevenue: 0, recurringRevenue: 0, oneTimeRevenue: 0, refunds: 0, netRevenue: 0, growthRate: 0 },
+  conversions: { leads: 0, prospects: 0, customers: 0, leadToProspectRate: 0, prospectToCustomerRate: 0, overallConversionRate: 0, costPerLead: 0, costPerAcquisition: 0 },
+  ads: { spend: 0, impressions: 0, clicks: 0, ctr: 0, cpc: 0, cpm: 0, roas: 0, frequency: 0 },
+  chartData: [],
+  topProducts: [],
+};
 
 // ─────────────────────────────────────────────
 // Hook
@@ -150,53 +146,18 @@ export function useMetrics(options: UseMetricsOptions = {}): MetricsState & {
   refresh: () => Promise<void>;
   setDateRange: (range: DateRange) => void;
 } {
-  const {
-    dateRange: initialRange = "30d",
-    useMock = false,
-    realtimeEvents = 50,
-  } = options;
-
+  const { dateRange: initialRange = "30d", useMock = false, workspaceId } = options;
   const [dateRange, setDateRange] = useState<DateRange>(initialRange);
   const [state, setState] = useState<MetricsState>({
-    events: [],
-    revenue: {
-      totalRevenue: 0,
-      recurringRevenue: 0,
-      oneTimeRevenue: 0,
-      refunds: 0,
-      netRevenue: 0,
-      growthRate: 0,
-    },
-    conversions: {
-      leads: 0,
-      prospects: 0,
-      customers: 0,
-      leadToProspectRate: 0,
-      prospectToCustomerRate: 0,
-      overallConversionRate: 0,
-      costPerLead: 0,
-      costPerAcquisition: 0,
-    },
-    ads: {
-      spend: 0,
-      impressions: 0,
-      clicks: 0,
-      ctr: 0,
-      cpc: 0,
-      cpm: 0,
-      roas: 0,
-      frequency: 0,
-    },
-    chartData: [],
-    topProducts: [],
+    ...EMPTY_METRICS,
     isLoading: true,
     isRefreshing: false,
+    isLive: false,
     error: null,
     lastUpdated: null,
   });
 
   const unsubscribeRef = useRef<(() => void) | null>(null);
-
   const days = DATE_RANGE_DAYS[dateRange];
 
   const loadMockData = useCallback(() => {
@@ -204,18 +165,24 @@ export function useMetrics(options: UseMetricsOptions = {}): MetricsState & {
     const cutoff = new Date();
     cutoff.setDate(cutoff.getDate() - days);
     const filtered = events.filter((e) => new Date(e.timestamp) >= cutoff);
-
     setState((prev) => ({
       ...prev,
       ...buildMetrics(filtered, days),
       isLoading: false,
       isRefreshing: false,
+      isLive: false,
       lastUpdated: new Date(),
       error: null,
     }));
   }, [days]);
 
   const loadFromFirestore = useCallback(async () => {
+    // No workspaceId → use mock
+    if (!workspaceId) {
+      loadMockData();
+      return;
+    }
+
     try {
       const cutoff = new Date();
       cutoff.setDate(cutoff.getDate() - days);
@@ -223,58 +190,61 @@ export function useMetrics(options: UseMetricsOptions = {}): MetricsState & {
 
       const q = query(
         collection(db, "webhook_events"),
+        where("workspaceId", "==", workspaceId),
         where("timestamp", ">=", cutoffTs),
         orderBy("timestamp", "desc")
       );
 
       const snapshot = await getDocs(q);
       const events = snapshot.docs.map((doc) =>
-        firestoreDocToEvent({ id: doc.id, data: () => doc.data() })
+        firestoreDocToEvent(doc.id, doc.data() as Record<string, unknown>)
       );
+
+      // If no events yet, fall back to mock
+      if (events.length === 0) {
+        console.info("[useMetrics] Nenhum evento no Firestore — usando mock");
+        loadMockData();
+        return;
+      }
 
       setState((prev) => ({
         ...prev,
         ...buildMetrics(events, days),
         isLoading: false,
         isRefreshing: false,
+        isLive: true,
         lastUpdated: new Date(),
         error: null,
       }));
     } catch (err) {
       console.error("[useMetrics] Firestore error:", err);
-      // Fallback to mock data on error
       loadMockData();
     }
-  }, [days, loadMockData]);
+  }, [days, workspaceId, loadMockData]);
 
-  const subscribeToRealtimeEvents = useCallback(() => {
-    // Clean up previous listener
+  const subscribeRealtime = useCallback(() => {
+    if (!workspaceId) return;
     unsubscribeRef.current?.();
 
     const recentQ = query(
       collection(db, "webhook_events"),
+      where("workspaceId", "==", workspaceId),
       orderBy("timestamp", "desc"),
-      limit(realtimeEvents)
+      limit(10)
     );
 
-    const unsubscribe = onSnapshot(
-      recentQ,
-      (snapshot) => {
-        if (!snapshot.metadata.hasPendingWrites) {
-          // New real events — trigger a full refresh
-          setState((prev) => ({ ...prev, isRefreshing: true }));
-          loadFromFirestore();
-        }
-      },
-      (err) => {
-        console.warn("[useMetrics] Realtime snapshot error:", err);
+    const unsubscribe = onSnapshot(recentQ, (snapshot) => {
+      if (!snapshot.metadata.hasPendingWrites && !snapshot.empty) {
+        setState((prev) => ({ ...prev, isRefreshing: true }));
+        loadFromFirestore();
       }
-    );
+    }, (err) => {
+      console.warn("[useMetrics] Realtime error:", err);
+    });
 
     unsubscribeRef.current = unsubscribe;
-  }, [loadFromFirestore, realtimeEvents]);
+  }, [workspaceId, loadFromFirestore]);
 
-  // Initial load
   useEffect(() => {
     setState((prev) => ({ ...prev, isLoading: true }));
 
@@ -282,26 +252,17 @@ export function useMetrics(options: UseMetricsOptions = {}): MetricsState & {
       loadMockData();
     } else {
       loadFromFirestore();
-      subscribeToRealtimeEvents();
+      subscribeRealtime();
     }
 
-    return () => {
-      unsubscribeRef.current?.();
-    };
-  }, [dateRange, useMock, loadMockData, loadFromFirestore, subscribeToRealtimeEvents]);
+    return () => { unsubscribeRef.current?.(); };
+  }, [dateRange, workspaceId, useMock, loadMockData, loadFromFirestore, subscribeRealtime]);
 
   const refresh = useCallback(async () => {
     setState((prev) => ({ ...prev, isRefreshing: true }));
-    if (useMock) {
-      loadMockData();
-    } else {
-      await loadFromFirestore();
-    }
+    if (useMock) loadMockData();
+    else await loadFromFirestore();
   }, [useMock, loadMockData, loadFromFirestore]);
 
-  return {
-    ...state,
-    refresh,
-    setDateRange,
-  };
+  return { ...state, refresh, setDateRange };
 }
