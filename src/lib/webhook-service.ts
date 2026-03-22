@@ -1,7 +1,7 @@
 /**
  * Growfy LaunchOS — Webhook Service
- * Normaliza eventos de diferentes plataformas para o formato padrão
- * e salva no Firestore.
+ * Normaliza eventos de diferentes plataformas e salva no Firestore
+ * com suporte a multi-tenant (workspaceId)
  */
 
 import { initializeApp, getApps, cert } from "firebase-admin/app";
@@ -9,7 +9,7 @@ import { getFirestore } from "firebase-admin/firestore";
 import { sendWebhookAlert } from "./email-service";
 
 // ─────────────────────────────────────────────
-// Firebase Admin (server-side)
+// Firebase Admin
 // ─────────────────────────────────────────────
 
 function getAdminDb() {
@@ -42,6 +42,7 @@ export type WebhookEventType =
 
 export interface NormalizedWebhookEvent {
   id: string;
+  workspaceId: string;
   source: WebhookSource;
   type: WebhookEventType;
   status: "approved" | "pending" | "refunded" | "cancelled" | "chargeback";
@@ -50,6 +51,7 @@ export interface NormalizedWebhookEvent {
   customerId: string;
   customerName: string;
   customerEmail: string;
+  customerPhone?: string;
   productId: string;
   productName: string;
   transactionId: string;
@@ -66,51 +68,48 @@ export interface NormalizedWebhookEvent {
 // Hotmart Normalizer
 // ─────────────────────────────────────────────
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-export function normalizeHotmart(payload: any): NormalizedWebhookEvent {
-  const event = payload.data || payload;
-  const buyer = event.buyer || {};
-  const product = event.product || {};
-  const purchase = event.purchase || {};
-  const tracking = purchase.tracking || {};
+export function normalizeHotmart(
+  payload: Record<string, unknown>,
+  workspaceId: string
+): NormalizedWebhookEvent {
+  const event = (payload.data ?? payload) as Record<string, unknown>;
+  const buyer = (event.buyer ?? {}) as Record<string, unknown>;
+  const product = (event.product ?? {}) as Record<string, unknown>;
+  const purchase = (event.purchase ?? {}) as Record<string, unknown>;
+  const tracking = (purchase.tracking ?? {}) as Record<string, unknown>;
 
   const statusMap: Record<string, NormalizedWebhookEvent["status"]> = {
-    APPROVED: "approved",
-    COMPLETE: "approved",
-    WAITING_PAYMENT: "pending",
-    REFUNDED: "refunded",
-    CANCELLED: "cancelled",
-    CHARGEBACK: "chargeback",
+    APPROVED: "approved", COMPLETE: "approved",
+    WAITING_PAYMENT: "pending", REFUNDED: "refunded",
+    CANCELLED: "cancelled", CHARGEBACK: "chargeback",
   };
 
   const typeMap: Record<string, WebhookEventType> = {
-    PURCHASE_APPROVED: "purchase",
-    PURCHASE_COMPLETE: "purchase",
-    PURCHASE_REFUNDED: "refund",
-    PURCHASE_CANCELLED: "refund",
+    PURCHASE_APPROVED: "purchase", PURCHASE_COMPLETE: "purchase",
+    PURCHASE_REFUNDED: "refund", PURCHASE_CANCELLED: "refund",
     PURCHASE_CHARGEBACK: "chargeback",
     SUBSCRIPTION_CANCELLATION: "subscription_cancel",
   };
 
+  const priceObj = (purchase.original_offer_price ?? purchase.price ?? {}) as Record<string, unknown>;
+
   return {
-    id: `hotmart_${purchase.transaction || Date.now()}`,
+    id: `hotmart_${purchase.transaction ?? Date.now()}`,
+    workspaceId,
     source: "hotmart",
-    type: typeMap[payload.event] ?? "purchase",
-    status: statusMap[purchase.status] ?? "pending",
-    amount: purchase.original_offer_price?.value ?? purchase.price?.value ?? 0,
-    currency: purchase.original_offer_price?.currency_value ?? "BRL",
-    customerId: buyer.ucode ?? buyer.email ?? "",
-    customerName: buyer.name ?? "",
-    customerEmail: buyer.email ?? "",
+    type: typeMap[payload.event as string] ?? "purchase",
+    status: statusMap[purchase.status as string] ?? "pending",
+    amount: parseFloat(String(priceObj.value ?? 0)),
+    currency: String(priceObj.currency_value ?? "BRL"),
+    customerId: String(buyer.ucode ?? buyer.email ?? ""),
+    customerName: String(buyer.name ?? ""),
+    customerEmail: String(buyer.email ?? ""),
     productId: String(product.id ?? ""),
-    productName: product.name ?? "",
-    transactionId: purchase.transaction ?? "",
-    timestamp: new Date(purchase.approved_date ?? Date.now()),
-    utmSource: tracking.source_sck ?? tracking.external_reference,
-    utmMedium: undefined,
-    utmCampaign: undefined,
-    utmContent: tracking.source_sck,
-    utmTerm: undefined,
+    productName: String(product.name ?? ""),
+    transactionId: String(purchase.transaction ?? ""),
+    timestamp: new Date(String(purchase.approved_date ?? Date.now())),
+    utmSource: String(tracking.source_sck ?? ""),
+    utmContent: String(tracking.source_sck ?? ""),
     raw: payload,
   };
 }
@@ -119,45 +118,40 @@ export function normalizeHotmart(payload: any): NormalizedWebhookEvent {
 // Eduzz Normalizer
 // ─────────────────────────────────────────────
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-export function normalizeEduzz(payload: any): NormalizedWebhookEvent {
+export function normalizeEduzz(
+  payload: Record<string, unknown>,
+  workspaceId: string
+): NormalizedWebhookEvent {
   const statusMap: Record<string, NormalizedWebhookEvent["status"]> = {
-    "1": "pending",
-    "3": "approved",
-    "4": "cancelled",
-    "5": "refunded",
-    "6": "chargeback",
-    "9": "approved", // duplicated/confirmed
+    "1": "pending", "3": "approved", "4": "cancelled",
+    "5": "refunded", "6": "chargeback", "9": "approved",
   };
-
   const typeMap: Record<string, WebhookEventType> = {
-    "3": "purchase",
-    "4": "refund",
-    "5": "refund",
-    "6": "chargeback",
+    "3": "purchase", "4": "refund", "5": "refund", "6": "chargeback",
   };
-
   const statusCode = String(payload.trans_status ?? "1");
 
   return {
     id: `eduzz_${payload.trans_cod ?? Date.now()}`,
+    workspaceId,
     source: "eduzz",
     type: typeMap[statusCode] ?? "purchase",
     status: statusMap[statusCode] ?? "pending",
-    amount: parseFloat(payload.trans_value ?? "0"),
+    amount: parseFloat(String(payload.trans_value ?? "0")),
     currency: "BRL",
-    customerId: payload.client_document ?? payload.client_email ?? "",
-    customerName: payload.client_name ?? "",
-    customerEmail: payload.client_email ?? "",
+    customerId: String(payload.client_document ?? payload.client_email ?? ""),
+    customerName: String(payload.client_name ?? ""),
+    customerEmail: String(payload.client_email ?? ""),
+    customerPhone: String(payload.client_cellphone ?? ""),
     productId: String(payload.content_cod ?? ""),
-    productName: payload.content_title ?? "",
+    productName: String(payload.content_title ?? ""),
     transactionId: String(payload.trans_cod ?? ""),
-    timestamp: new Date(payload.trans_createdate ?? Date.now()),
-    utmSource: payload.utm_source,
-    utmMedium: payload.utm_medium,
-    utmCampaign: payload.utm_campaign,
-    utmContent: payload.utm_content,
-    utmTerm: payload.utm_term,
+    timestamp: new Date(String(payload.trans_createdate ?? Date.now())),
+    utmSource: String(payload.utm_source ?? ""),
+    utmMedium: String(payload.utm_medium ?? ""),
+    utmCampaign: String(payload.utm_campaign ?? ""),
+    utmContent: String(payload.utm_content ?? ""),
+    utmTerm: String(payload.utm_term ?? ""),
     raw: payload,
   };
 }
@@ -166,69 +160,65 @@ export function normalizeEduzz(payload: any): NormalizedWebhookEvent {
 // Kiwify Normalizer
 // ─────────────────────────────────────────────
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-export function normalizeKiwify(payload: any): NormalizedWebhookEvent {
+export function normalizeKiwify(
+  payload: Record<string, unknown>,
+  workspaceId: string
+): NormalizedWebhookEvent {
   const statusMap: Record<string, NormalizedWebhookEvent["status"]> = {
-    paid: "approved",
-    waiting_payment: "pending",
-    refunded: "refunded",
-    chargedback: "chargeback",
-    cancelled: "cancelled",
+    paid: "approved", waiting_payment: "pending",
+    refunded: "refunded", chargedback: "chargeback", cancelled: "cancelled",
   };
-
   const typeMap: Record<string, WebhookEventType> = {
-    order_approved: "purchase",
-    order_refunded: "refund",
+    order_approved: "purchase", order_refunded: "refund",
     subscription_first_charge: "subscription_start",
     subscription_renewed: "subscription_renewal",
     subscription_canceled: "subscription_cancel",
   };
 
-  const Customer = payload.Customer || {};
-  const Product = payload.Product || {};
-  const Tracking = payload.TrackingParameters || {};
+  const Customer = (payload.Customer ?? {}) as Record<string, unknown>;
+  const Product = (payload.Product ?? {}) as Record<string, unknown>;
+  const Tracking = (payload.TrackingParameters ?? {}) as Record<string, unknown>;
 
   return {
     id: `kiwify_${payload.order_id ?? Date.now()}`,
+    workspaceId,
     source: "kiwify",
-    type: typeMap[payload.webhook_event_type] ?? "purchase",
-    status: statusMap[payload.order_status] ?? "pending",
-    amount: parseFloat(payload.sale_amount ?? "0") / 100,
+    type: typeMap[payload.webhook_event_type as string] ?? "purchase",
+    status: statusMap[payload.order_status as string] ?? "pending",
+    amount: parseFloat(String(payload.sale_amount ?? "0")) / 100,
     currency: "BRL",
-    customerId: Customer.CPF ?? Customer.email ?? "",
-    customerName: Customer.full_name ?? "",
-    customerEmail: Customer.email ?? "",
-    productId: Product.product_id ?? "",
-    productName: Product.product_name ?? "",
-    transactionId: payload.order_id ?? "",
-    timestamp: new Date(payload.created_at ?? Date.now()),
-    utmSource: Tracking.src,
-    utmMedium: Tracking.utm_medium,
-    utmCampaign: Tracking.utm_campaign,
-    utmContent: Tracking.utm_content,
-    utmTerm: Tracking.utm_term,
+    customerId: String(Customer.CPF ?? Customer.email ?? ""),
+    customerName: String(Customer.full_name ?? ""),
+    customerEmail: String(Customer.email ?? ""),
+    customerPhone: String(Customer.mobile ?? ""),
+    productId: String(Product.product_id ?? ""),
+    productName: String(Product.product_name ?? ""),
+    transactionId: String(payload.order_id ?? ""),
+    timestamp: new Date(String(payload.created_at ?? Date.now())),
+    utmSource: String(Tracking.src ?? ""),
+    utmMedium: String(Tracking.utm_medium ?? ""),
+    utmCampaign: String(Tracking.utm_campaign ?? ""),
+    utmContent: String(Tracking.utm_content ?? ""),
+    utmTerm: String(Tracking.utm_term ?? ""),
     raw: payload,
   };
 }
 
 // ─────────────────────────────────────────────
-// Save to Firestore + Send Alert
+// Save to Firestore
 // ─────────────────────────────────────────────
 
 export async function processWebhookEvent(event: NormalizedWebhookEvent): Promise<void> {
   try {
     const db = getAdminDb();
-
-    // Save to Firestore
     await db.collection("webhook_events").doc(event.id).set({
       ...event,
       timestamp: event.timestamp,
       createdAt: new Date(),
     });
 
-    console.log(`✅ [Webhook] Saved: ${event.id} (${event.source} - ${event.type})`);
+    console.log(`✅ [Webhook] Saved: ${event.id} (workspace: ${event.workspaceId})`);
 
-    // Send email alert only for approved purchases and refunds
     if (
       (event.type === "purchase" || event.type === "refund") &&
       (event.status === "approved" || event.status === "refunded")
@@ -236,7 +226,7 @@ export async function processWebhookEvent(event: NormalizedWebhookEvent): Promis
       await sendWebhookAlert(event);
     }
   } catch (error) {
-    console.error(`❌ [Webhook] Error processing ${event.id}:`, error);
+    console.error(`❌ [Webhook] Error:`, error);
     throw error;
   }
 }
@@ -247,36 +237,16 @@ export async function processWebhookEvent(event: NormalizedWebhookEvent): Promis
 
 import crypto from "crypto";
 
-export function verifyHotmartSignature(
-  body: string,
-  signature: string,
-  secret: string
-): boolean {
+export function verifyHotmartSignature(body: string, signature: string, secret: string): boolean {
   try {
-    const hmac = crypto.createHmac("sha1", secret);
-    const expected = hmac.update(body).digest("hex");
-    return crypto.timingSafeEqual(
-      Buffer.from(signature),
-      Buffer.from(expected)
-    );
-  } catch {
-    return false;
-  }
+    const expected = crypto.createHmac("sha1", secret).update(body).digest("hex");
+    return crypto.timingSafeEqual(Buffer.from(signature), Buffer.from(expected));
+  } catch { return false; }
 }
 
-export function verifyKiwifySignature(
-  body: string,
-  signature: string,
-  secret: string
-): boolean {
+export function verifyKiwifySignature(body: string, signature: string, secret: string): boolean {
   try {
-    const hmac = crypto.createHmac("sha256", secret);
-    const expected = hmac.update(body).digest("hex");
-    return crypto.timingSafeEqual(
-      Buffer.from(signature),
-      Buffer.from(expected)
-    );
-  } catch {
-    return false;
-  }
+    const expected = crypto.createHmac("sha256", secret).update(body).digest("hex");
+    return crypto.timingSafeEqual(Buffer.from(signature), Buffer.from(expected));
+  } catch { return false; }
 }
