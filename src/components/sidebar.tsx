@@ -5,7 +5,7 @@ import { usePathname, useRouter } from "next/navigation";
 import {
   LayoutDashboard, Search, Calculator, Settings,
   LogOut, Zap, Users, CreditCard, BarChart2,
-  Bell, Webhook, FileText, ChevronDown,
+  Bell, Webhook, FileText, ChevronDown, Download
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { logout } from "@/lib/auth-service";
@@ -23,7 +23,7 @@ const sections = [
   { label: "Principal", items: [{ href: "/dashboard", label: "Visão Geral", icon: LayoutDashboard }] },
   { label: "Canais", items: [{ href: "/dashboard/meta-ads", label: "Meta Ads", icon: MetaIcon }, { href: "/dashboard/google-ads", label: "Google Ads", icon: Search }] },
   { label: "Gestão", items: [{ href: "/dashboard/clientes", label: "Clientes", icon: Users }, { href: "/dashboard/pagamentos", label: "Pagamentos", icon: CreditCard }, { href: "/dashboard/relatorios", label: "Relatórios", icon: BarChart2 }] },
-  { label: "Sistema", items: [{ href: "/dashboard/webhooks", label: "Webhooks", icon: Webhook }, { href: "/dashboard/notificacoes", label: "Notificações", icon: Bell }, { href: "/dashboard/docs", label: "Documentação", icon: FileText }] },
+  { label: "Sistema", items: [{ href: "/dashboard/webhooks", label: "Webhooks", icon: Webhook }, { href: "/dashboard/importar", label: "Importar dados", icon: Download }, { href: "/dashboard/notificacoes", label: "Notificações", icon: Bell }, { href: "/dashboard/docs", label: "Documentação", icon: FileText },] },
   { label: "Planejamento", items: [{ href: "/dashboard/planning", label: "Eng. Reversa", icon: Calculator }] },
 ];
 
