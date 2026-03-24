@@ -3,17 +3,48 @@
 import React, { useState } from "react";
 import { useRouter } from "next/navigation";
 import { Eye, EyeOff, Loader2 } from "lucide-react";
-import { signInWithGoogle, signInWithEmail, signUpWithEmail, resetPassword } from "@/lib/auth-service";
+import {
+  signInWithGoogle,
+  signInWithEmail,
+  signUpWithEmail,
+  resetPassword,
+} from "@/lib/auth-service";
+import { updateProfile } from "firebase/auth";
+import { auth } from "@/lib/firebase";
 import { cn } from "@/lib/utils";
 
 type Mode = "login" | "signup" | "reset";
 
+const circles = [
+  { size: 200, top: "2%",  left: "42%", opacity: 0.22 },
+  { size: 140, top: "14%", left: "58%", opacity: 0.16 },
+  { size: 110, top: "24%", left: "28%", opacity: 0.14 },
+  { size: 170, top: "34%", left: "52%", opacity: 0.20 },
+  { size: 95,  top: "46%", left: "34%", opacity: 0.12 },
+  { size: 150, top: "54%", left: "60%", opacity: 0.18 },
+  { size: 120, top: "64%", left: "24%", opacity: 0.15 },
+  { size: 180, top: "72%", left: "48%", opacity: 0.20 },
+  { size: 100, top: "84%", left: "36%", opacity: 0.13 },
+  { size: 130, top: "90%", left: "56%", opacity: 0.16 },
+];
+
 export default function LoginPage() {
   const router = useRouter();
   const [mode, setMode] = useState<Mode>("login");
+
+  // Login fields
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
+
+  // Signup extra fields
+  const [fullName, setFullName] = useState("");
+  const [companyName, setCompanyName] = useState("");
+  const [phone, setPhone] = useState("");
+  const [role, setRole] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
+
   const [isLoading, setIsLoading] = useState(false);
   const [isGoogleLoading, setIsGoogleLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -21,23 +52,81 @@ export default function LoginPage() {
 
   function clear() { setError(null); setSuccess(null); }
 
+  function switchMode(m: Mode) {
+    setMode(m);
+    clear();
+    setPassword("");
+    setConfirmPassword("");
+  }
+
+  async function sendWelcomeEmail(name: string, email: string) {
+    try {
+      await fetch("/api/email/welcome", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name, email, companyName }),
+      });
+    } catch {
+      // Non-blocking — don't fail signup if email fails
+    }
+  }
+
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     clear();
+
+    if (mode === "signup") {
+      if (password !== confirmPassword) {
+        setError("As senhas não conferem.");
+        return;
+      }
+      if (password.length < 6) {
+        setError("A senha deve ter pelo menos 6 caracteres.");
+        return;
+      }
+      if (!fullName.trim()) {
+        setError("Informe seu nome completo.");
+        return;
+      }
+    }
+
     setIsLoading(true);
     try {
       if (mode === "reset") {
         const { error } = await resetPassword(email);
         if (error) setError(error);
-        else { setSuccess("E-mail de recuperação enviado!"); setMode("login"); }
+        else { setSuccess("E-mail de recuperação enviado! Verifique sua caixa de entrada."); setMode("login"); }
         return;
       }
-      const result = mode === "login"
-        ? await signInWithEmail(email, password)
-        : await signUpWithEmail(email, password);
-      if (result.error) setError(result.error);
-      else router.push("/workspace");
-    } finally { setIsLoading(false); }
+
+      if (mode === "login") {
+        const result = await signInWithEmail(email, password);
+        if (result.error) setError(result.error);
+        else router.push("/workspace");
+        return;
+      }
+
+      // Signup
+      const result = await signUpWithEmail(email, password);
+      if (result.error) {
+        setError(result.error);
+        return;
+      }
+
+      // Update Firebase profile with display name
+      if (result.user && auth.currentUser) {
+        await updateProfile(auth.currentUser, {
+          displayName: fullName.trim(),
+        });
+      }
+
+      // Send welcome email
+      await sendWelcomeEmail(fullName.trim(), email);
+
+      router.push("/workspace");
+    } finally {
+      setIsLoading(false);
+    }
   }
 
   async function handleGoogle() {
@@ -47,33 +136,24 @@ export default function LoginPage() {
       const result = await signInWithGoogle();
       if (result.error) setError(result.error);
       else router.push("/workspace");
-    } finally { setIsGoogleLoading(false); }
+    } finally {
+      setIsGoogleLoading(false);
+    }
   }
 
-  const circles = [
-    { size: 200, top: "2%",  left: "42%", opacity: 0.22 },
-    { size: 140, top: "14%", left: "58%", opacity: 0.16 },
-    { size: 110, top: "24%", left: "28%", opacity: 0.14 },
-    { size: 170, top: "34%", left: "52%", opacity: 0.20 },
-    { size: 95,  top: "46%", left: "34%", opacity: 0.12 },
-    { size: 150, top: "54%", left: "60%", opacity: 0.18 },
-    { size: 120, top: "64%", left: "24%", opacity: 0.15 },
-    { size: 180, top: "72%", left: "48%", opacity: 0.20 },
-    { size: 100, top: "84%", left: "36%", opacity: 0.13 },
-    { size: 130, top: "90%", left: "56%", opacity: 0.16 },
-  ];
+  const inputClass = "w-full rounded-xl border border-[#08080A]/10 bg-white px-4 py-3 text-sm text-[#08080A] placeholder:text-[#08080A]/25 outline-none transition-all focus:border-[#5050F2]/50 focus:ring-2 focus:ring-[#5050F2]/10 shadow-sm disabled:opacity-50";
+  const labelClass = "block text-xs font-semibold uppercase tracking-wider text-[#08080A]/50 mb-1.5";
 
   return (
     <div className="flex min-h-screen p-4">
       {/* Left panel */}
-      <div className="relative hidden lg:flex lg:w-[52%] flex-col justify-between overflow-hidden p-12"
-        style={{ background: "linear-gradient(135deg, #120800 0%, #08080A 50%, #0A0814 100%)" }}>
-        
-        {/* Ambient glow */}
+      <div
+        className="relative hidden lg:flex lg:w-[52%] flex-col justify-between overflow-hidden p-12 rounded-2xl"
+        style={{ background: "linear-gradient(135deg, #120800 0%, #08080A 50%, #0A0814 100%)" }}
+      >
         <div className="absolute left-1/3 top-1/3 h-64 w-64 rounded-2xl bg-[#E85D22]/8 blur-3xl" />
         <div className="absolute right-1/4 bottom-1/3 h-48 w-48 rounded-2xl bg-[#5050F2]/6 blur-3xl" />
 
-        {/* Floating circles */}
         {circles.map((c, i) => (
           <div key={i} className="absolute rounded-full border"
             style={{
@@ -85,7 +165,6 @@ export default function LoginPage() {
           />
         ))}
 
-        {/* Logo */}
         <div className="relative z-10 flex items-center gap-2.5">
           <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-[#5050F2]">
             <span className="text-xs font-black text-white">G</span>
@@ -93,12 +172,13 @@ export default function LoginPage() {
           <span className="text-base font-bold text-white tracking-tight">Growfy</span>
         </div>
 
-        {/* Headline */}
         <div className="relative z-10 space-y-5">
-          <p className="text-xs font-bold uppercase tracking-[0.25em] text-[#5050f2]">LaunchOS</p>
+          <p className="text-xs font-bold uppercase tracking-[0.25em] text-[#5050F2]">LaunchOS</p>
           <h1 className="text-5xl font-semibold leading-[1.05] text-white">
             Inteligência<br />para seus<br />
-            <span className="bg-gradient-to-r from-[#f7f8f8] to-[#a5a5a5] text-transparent bg-clip-text inline-block">lançamentos.</span>
+            <span className="bg-gradient-to-r from-[#f7f8f8] to-[#a5a5a5] text-transparent bg-clip-text inline-block">
+              lançamentos.
+            </span>
           </h1>
           <p className="text-sm leading-relaxed text-white/35 max-w-xs">
             Centralize Meta Ads, Google Ads, Hotmart, Eduzz e Kiwify.
@@ -106,7 +186,6 @@ export default function LoginPage() {
           </p>
         </div>
 
-        {/* Stats */}
         <div className="relative z-10 flex gap-10">
           {[{ v: "5+", l: "Integrações" }, { v: "100%", l: "Tempo real" }, { v: "∞", l: "Simulações" }].map((s) => (
             <div key={s.l}>
@@ -118,9 +197,8 @@ export default function LoginPage() {
       </div>
 
       {/* Right panel */}
-      <div className="flex flex-1 items-center justify-center bg-[#F7F7F8] px-8 py-12 lg:px-16 rounded-2xl">
+      <div className="flex flex-1 items-center justify-center bg-[#F7F7F8] px-8 py-12 lg:px-16 rounded-2xl overflow-y-auto">
         <div className="w-full max-w-[360px]">
-          
           {/* Mobile logo */}
           <div className="flex items-center gap-2 mb-8 lg:hidden">
             <div className="flex h-7 w-7 items-center justify-center rounded-md bg-[#5050F2]">
@@ -129,7 +207,7 @@ export default function LoginPage() {
             <span className="font-bold text-[#08080A]">Growfy LaunchOS</span>
           </div>
 
-          <div className="mb-8">
+          <div className="mb-6">
             <h2 className="text-2xl font-black text-[#08080A] tracking-tight">
               {mode === "login" && "Área de acesso"}
               {mode === "signup" && "Criar conta"}
@@ -137,7 +215,7 @@ export default function LoginPage() {
             </h2>
             <p className="mt-1 text-sm text-[#08080A]/40">
               {mode === "login" && "Bem-vindo de volta ao LaunchOS"}
-              {mode === "signup" && "Comece gratuitamente hoje"}
+              {mode === "signup" && "Preencha seus dados para começar"}
               {mode === "reset" && "Enviaremos um link de recuperação"}
             </p>
           </div>
@@ -153,9 +231,11 @@ export default function LoginPage() {
             </div>
           )}
 
+          {/* Google button */}
           {mode !== "reset" && (
             <>
-              <button type="button" onClick={handleGoogle} disabled={isGoogleLoading || isLoading}
+              <button type="button" onClick={handleGoogle}
+                disabled={isGoogleLoading || isLoading}
                 className="w-full flex items-center justify-center gap-3 rounded-xl border border-[#08080A]/10 bg-white px-4 py-3 mb-5 text-sm font-medium text-[#08080A] hover:bg-[#08080A]/4 transition-all disabled:opacity-50 shadow-sm">
                 {isGoogleLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : (
                   <svg className="h-4 w-4" viewBox="0 0 24 24">
@@ -176,46 +256,106 @@ export default function LoginPage() {
           )}
 
           <form onSubmit={handleSubmit} className="space-y-4">
+            {/* Signup extra fields */}
+            {mode === "signup" && (
+              <>
+                <div>
+                  <label className={labelClass}>Nome completo *</label>
+                  <input type="text" value={fullName}
+                    onChange={(e) => setFullName(e.target.value)}
+                    placeholder="Seu nome completo" required disabled={isLoading}
+                    className={inputClass} />
+                </div>
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className={labelClass}>Empresa</label>
+                    <input type="text" value={companyName}
+                      onChange={(e) => setCompanyName(e.target.value)}
+                      placeholder="Nome da empresa" disabled={isLoading}
+                      className={inputClass} />
+                  </div>
+                  <div>
+                    <label className={labelClass}>Cargo</label>
+                    <input type="text" value={role}
+                      onChange={(e) => setRole(e.target.value)}
+                      placeholder="Ex: Gestor" disabled={isLoading}
+                      className={inputClass} />
+                  </div>
+                </div>
+                <div>
+                  <label className={labelClass}>WhatsApp</label>
+                  <input type="tel" value={phone}
+                    onChange={(e) => setPhone(e.target.value)}
+                    placeholder="+55 11 99999-9999" disabled={isLoading}
+                    className={inputClass} />
+                </div>
+              </>
+            )}
+
+            {/* Email */}
             <div>
-              <label className="block text-xs font-semibold uppercase tracking-wider text-[#08080A]/50 mb-1.5">E-mail</label>
-              <input type="email" value={email} onChange={(e) => setEmail(e.target.value)}
-                placeholder="admin@empresa.com" required autoComplete="email" disabled={isLoading}
-                className="w-full rounded-xl border border-[#08080A]/10 bg-white px-4 py-3 text-sm text-[#08080A] placeholder:text-[#08080A]/25 outline-none transition-all focus:border-[#5050F2]/50 focus:ring-2 focus:ring-[#5050F2]/10 shadow-sm disabled:opacity-50" />
+              <label className={labelClass}>E-mail *</label>
+              <input type="email" value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                placeholder="admin@empresa.com" required
+                autoComplete="email" disabled={isLoading}
+                className={inputClass} />
             </div>
 
+            {/* Password */}
             {mode !== "reset" && (
               <div>
-                <div className="flex items-center justify-between mb-1.5">
-                  <label className="block text-xs font-semibold uppercase tracking-wider text-[#08080A]/50">Senha</label>
-                 
-                </div>
+                <label className={labelClass}>Senha *</label>
                 <div className="relative">
-                  <input type={showPassword ? "text" : "password"} value={password}
-                    onChange={(e) => setPassword(e.target.value)} placeholder="••••••••"
-                    required minLength={6} disabled={isLoading}
+                  <input type={showPassword ? "text" : "password"}
+                    value={password} onChange={(e) => setPassword(e.target.value)}
+                    placeholder="••••••••" required minLength={6}
+                    disabled={isLoading}
                     autoComplete={mode === "signup" ? "new-password" : "current-password"}
-                    className="w-full rounded-xl border border-[#08080A]/10 bg-white px-4 py-3 pr-11 text-sm text-[#08080A] placeholder:text-[#08080A]/25 outline-none transition-all focus:border-[#5050F2]/50 focus:ring-2 focus:ring-[#5050F2]/10 shadow-sm disabled:opacity-50" />
-                  <button type="button" onClick={() => setShowPassword(v => !v)} tabIndex={-1}
+                    className={cn(inputClass, "pr-11")} />
+                  <button type="button" onClick={() => setShowPassword(v => !v)}
+                    tabIndex={-1}
                     className="absolute right-3 top-1/2 -translate-y-1/2 text-[#08080A]/30 hover:text-[#08080A]/60">
                     {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
                   </button>
-                  
-                  
                 </div>
-                <div className="flex justify-end mt-2 mb-8">
-                    {mode === "login" && (
-                    <button type="button" onClick={() => { setMode("reset"); clear(); }}
-                      className="text-xs font-semibold text-[#5050F2] hover:text-[#4040E0] transition-colors">
-                      Esqueceu a senha?
-                    </button>
-                  )}
+              </div>
+            )}
 
-                  </div>
+            {/* Confirm password */}
+            {mode === "signup" && (
+              <div>
+                <label className={labelClass}>Confirmar senha *</label>
+                <div className="relative">
+                  <input type={showConfirmPassword ? "text" : "password"}
+                    value={confirmPassword}
+                    onChange={(e) => setConfirmPassword(e.target.value)}
+                    placeholder="••••••••" required minLength={6}
+                    disabled={isLoading} autoComplete="new-password"
+                    className={cn(inputClass, "pr-11")} />
+                  <button type="button"
+                    onClick={() => setShowConfirmPassword(v => !v)}
+                    tabIndex={-1}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-[#08080A]/30 hover:text-[#08080A]/60">
+                    {showConfirmPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {/* Forgot password */}
+            {mode === "login" && (
+              <div className="flex justify-end">
+                <button type="button"
+                  onClick={() => { setMode("reset"); clear(); }}
+                  className="text-xs font-semibold text-[#5050F2] hover:text-[#4040E0] transition-colors">
+                  Esqueceu a senha?
+                </button>
               </div>
             )}
 
             <button type="submit" disabled={isLoading || isGoogleLoading}
-              className="w-full flex items-center justify-center gap-2 rounded-xl bg-[#5050F2] px-4 py-3 mt-2 text-sm font-bold text-white hover:bg-[#4040E0] transition-all disabled:opacity-50 shadow-md">
+              className="w-full flex items-center justify-center gap-2 rounded-xl bg-[#5050F2] px-4 py-3 text-sm font-bold text-white hover:bg-[#4040E0] transition-all disabled:opacity-50 shadow-md">
               {isLoading && <Loader2 className="h-4 w-4 animate-spin" />}
               {mode === "login" && "Entrar no Sistema"}
               {mode === "signup" && "Criar conta"}
@@ -224,9 +364,28 @@ export default function LoginPage() {
           </form>
 
           <p className="mt-6 text-center text-sm text-[#08080A]/40">
-            {mode === "login" && <>Não tem conta?{" "}<button onClick={() => { setMode("signup"); clear(); }} className="font-semibold text-[#5050F2] hover:text-[#4040E0] transition-colors">Criar conta</button></>}
-            {mode === "signup" && <>Já tem conta?{" "}<button onClick={() => { setMode("login"); clear(); }} className="font-semibold text-[#5050F2] hover:text-[#4040E0] transition-colors">Entrar</button></>}
-            {mode === "reset" && <button onClick={() => { setMode("login"); clear(); }} className="font-semibold text-[#5050F2] hover:text-[#4040E0] transition-colors">← Voltar para o login</button>}
+            {mode === "login" && (
+              <>Não tem conta?{" "}
+                <button onClick={() => switchMode("signup")}
+                  className="font-semibold text-[#5050F2] hover:text-[#4040E0] transition-colors">
+                  Criar conta
+                </button>
+              </>
+            )}
+            {mode === "signup" && (
+              <>Já tem conta?{" "}
+                <button onClick={() => switchMode("login")}
+                  className="font-semibold text-[#5050F2] hover:text-[#4040E0] transition-colors">
+                  Entrar
+                </button>
+              </>
+            )}
+            {mode === "reset" && (
+              <button onClick={() => switchMode("login")}
+                className="font-semibold text-[#5050F2] hover:text-[#4040E0] transition-colors">
+                ← Voltar para o login
+              </button>
+            )}
           </p>
         </div>
       </div>
