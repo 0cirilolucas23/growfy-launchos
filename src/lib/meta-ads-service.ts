@@ -1,26 +1,11 @@
 /**
  * Growfy LaunchOS — Meta Ads Service
- * Integração com a Marketing API do Meta (Facebook Ads)
- * Documentação: https://developers.facebook.com/docs/marketing-api
+ * Integração com a Marketing API do Meta com suporte a filtros e períodos
  */
 
 // ─────────────────────────────────────────────
 // Types
 // ─────────────────────────────────────────────
-
-export interface MetaCampaign {
-  id: string;
-  name: string;
-  status: string;
-  objective: string;
-}
-
-export interface MetaAdSet {
-  id: string;
-  name: string;
-  campaign_id: string;
-  status: string;
-}
 
 export interface MetaInsight {
   campaign_id?: string;
@@ -55,7 +40,7 @@ export interface MetaAdsMetrics {
   purchases: number;
   purchaseValue: number;
   roas: number;
-  hookRate: number; // video 3s / impressions %
+  hookRate: number;
 }
 
 export interface MetaCampaignRow {
@@ -73,6 +58,36 @@ export interface MetaCampaignRow {
   hookRate: number;
 }
 
+export interface MetaAdRow {
+  id: string;
+  name: string;
+  adsetName: string;
+  campaignName: string;
+  spend: number;
+  impressions: number;
+  clicks: number;
+  ctr: number;
+  cpc: number;
+  leads: number;
+  purchases: number;
+  roas: number;
+  hookRate: number;
+}
+
+export interface MetaAdSetRow {
+  id: string;
+  name: string;
+  campaignName: string;
+  spend: number;
+  impressions: number;
+  clicks: number;
+  ctr: number;
+  cpc: number;
+  leads: number;
+  purchases: number;
+  roas: number;
+}
+
 export interface MetaChartPoint {
   date: string;
   spend: number;
@@ -85,12 +100,19 @@ export interface MetaChartPoint {
 export interface MetaAdsDashboardData {
   metrics: MetaAdsMetrics;
   campaigns: MetaCampaignRow[];
+  adsets: MetaAdSetRow[];
+  ads: MetaAdRow[];
   chartData: MetaChartPoint[];
   dateRange: { since: string; until: string };
 }
 
+export interface MetaDateRange {
+  since: string; // YYYY-MM-DD
+  until: string; // YYYY-MM-DD
+}
+
 // ─────────────────────────────────────────────
-// API Client
+// Helpers
 // ─────────────────────────────────────────────
 
 const BASE_URL = "https://graph.facebook.com/v20.0";
@@ -108,28 +130,77 @@ async function metaFetch<T>(
     url.searchParams.set(key, value);
   }
 
-  const res = await fetch(url.toString(), {
-    next: { revalidate: 300 }, // cache 5 minutos
-  });
+  const res = await fetch(url.toString(), { cache: "no-store" });
 
   if (!res.ok) {
     const err = await res.json();
-    throw new Error(
-      `Meta API Error: ${err.error?.message ?? res.statusText}`
-    );
+    throw new Error(`Meta API Error: ${err.error?.message ?? res.statusText}`);
   }
 
   return res.json();
 }
 
-// ─────────────────────────────────────────────
-// Date Helpers
-// ─────────────────────────────────────────────
+function getActionValue(
+  actions: Array<{ action_type: string; value: string }> | undefined,
+  type: string
+): number {
+  return parseFloat(actions?.find((a) => a.action_type === type)?.value ?? "0");
+}
 
-function getDateRange(days: number): { since: string; until: string } {
+function parseMetrics(insights: MetaInsight[]): MetaAdsMetrics {
+  let spend = 0, impressions = 0, clicks = 0, reach = 0;
+  let leads = 0, purchases = 0, purchaseValue = 0, video3s = 0;
+
+  for (const i of insights) {
+    spend += parseFloat(i.spend ?? "0");
+    impressions += parseInt(i.impressions ?? "0");
+    clicks += parseInt(i.clicks ?? "0");
+    reach += parseInt(i.reach ?? "0");
+    leads += getActionValue(i.actions, "lead");
+    purchases += getActionValue(i.actions, "purchase");
+    purchaseValue += getActionValue(i.actions, "purchase_value");
+    video3s += parseFloat(
+      i.video_30_sec_watched_actions?.[0]?.value ??
+      i.video_p25_watched_actions?.[0]?.value ?? "0"
+    );
+  }
+
+  const safeImpressions = Math.max(impressions, 1);
+  const safeSpend = Math.max(spend, 0.01);
+
+  return {
+    spend, impressions, clicks, reach,
+    ctr: (clicks / safeImpressions) * 100,
+    cpc: spend / Math.max(clicks, 1),
+    cpm: (spend / safeImpressions) * 1000,
+    leads, purchases, purchaseValue,
+    roas: purchaseValue / safeSpend,
+    hookRate: (video3s / safeImpressions) * 100,
+  };
+}
+
+export function getPresetDateRange(preset: string): MetaDateRange {
   const until = new Date();
   const since = new Date();
-  since.setDate(since.getDate() - days);
+
+  switch (preset) {
+    case "today":
+      break;
+    case "7d":
+      since.setDate(since.getDate() - 7);
+      break;
+    case "14d":
+      since.setDate(since.getDate() - 14);
+      break;
+    case "30d":
+      since.setDate(since.getDate() - 30);
+      break;
+    case "90d":
+      since.setDate(since.getDate() - 90);
+      break;
+    default:
+      since.setDate(since.getDate() - 30);
+  }
 
   return {
     since: since.toISOString().split("T")[0],
@@ -138,196 +209,187 @@ function getDateRange(days: number): { since: string; until: string } {
 }
 
 // ─────────────────────────────────────────────
-// Parse Helpers
+// API Functions
 // ─────────────────────────────────────────────
 
-function getActionValue(
-  actions: Array<{ action_type: string; value: string }> | undefined,
-  type: string
-): number {
-  const action = actions?.find((a) => a.action_type === type);
-  return action ? parseFloat(action.value) : 0;
-}
-
-function parseInsightToMetrics(insights: MetaInsight[]): MetaAdsMetrics {
-  let spend = 0, impressions = 0, clicks = 0, reach = 0;
-  let leads = 0, purchases = 0, purchaseValue = 0;
-  let video3s = 0;
-
-  for (const insight of insights) {
-    spend += parseFloat(insight.spend ?? "0");
-    impressions += parseInt(insight.impressions ?? "0");
-    clicks += parseInt(insight.clicks ?? "0");
-    reach += parseInt(insight.reach ?? "0");
-    leads += getActionValue(insight.actions, "lead");
-    purchases += getActionValue(insight.actions, "purchase");
-    purchaseValue += getActionValue(insight.actions, "purchase_value");
-
-    // Hook rate: video views 3s / impressions
-    const v3s = insight.video_30_sec_watched_actions?.[0]?.value
-      ?? insight.video_p25_watched_actions?.[0]?.value
-      ?? "0";
-    video3s += parseFloat(v3s);
-  }
-
-  const safeImpressions = Math.max(impressions, 1);
-  const safeSpend = Math.max(spend, 0.01);
-
-  return {
-    spend,
-    impressions,
-    clicks,
-    reach,
-    ctr: (clicks / safeImpressions) * 100,
-    cpc: spend / Math.max(clicks, 1),
-    cpm: (spend / safeImpressions) * 1000,
-    leads,
-    purchases,
-    purchaseValue,
-    roas: purchaseValue / safeSpend,
-    hookRate: (video3s / safeImpressions) * 100,
-  };
-}
-
-// ─────────────────────────────────────────────
-// Main Functions
-// ─────────────────────────────────────────────
-
-/**
- * Busca métricas gerais da conta de anúncios
- */
 export async function fetchMetaAccountInsights(
-  days = 30
+  dateRange: MetaDateRange
 ): Promise<MetaAdsMetrics> {
   const accountId = process.env.META_AD_ACCOUNT_ID;
   if (!accountId) throw new Error("META_AD_ACCOUNT_ID não configurado");
 
-  const { since, until } = getDateRange(days);
-
   const fields = [
-    "spend", "impressions", "clicks", "reach",
-    "ctr", "cpc", "cpm",
+    "spend", "impressions", "clicks", "reach", "ctr", "cpc", "cpm",
     "actions", "action_values",
-    "video_p25_watched_actions",
-    "video_30_sec_watched_actions",
+    "video_p25_watched_actions", "video_30_sec_watched_actions",
   ].join(",");
 
   const data = await metaFetch<{ data: MetaInsight[] }>(
     `/${accountId}/insights`,
-    {
-      fields,
-      time_range: JSON.stringify({ since, until }),
-      level: "account",
-    }
+    { fields, time_range: JSON.stringify(dateRange), level: "account" }
   );
 
-  return parseInsightToMetrics(data.data ?? []);
+  return parseMetrics(data.data ?? []);
 }
 
-/**
- * Busca métricas por campanha
- */
-export async function fetchMetaCampaignInsights(
-  days = 30
+export async function fetchMetaCampaigns(
+  dateRange: MetaDateRange
 ): Promise<MetaCampaignRow[]> {
   const accountId = process.env.META_AD_ACCOUNT_ID;
   if (!accountId) throw new Error("META_AD_ACCOUNT_ID não configurado");
 
-  const { since, until } = getDateRange(days);
-
   const fields = [
-    "campaign_id", "campaign_name",
-    "spend", "impressions", "clicks", "ctr", "cpc",
-    "actions", "action_values",
+    "campaign_id", "campaign_name", "spend", "impressions",
+    "clicks", "ctr", "cpc", "actions", "action_values",
     "video_p25_watched_actions",
   ].join(",");
 
   const data = await metaFetch<{ data: MetaInsight[] }>(
     `/${accountId}/insights`,
-    {
-      fields,
-      time_range: JSON.stringify({ since, until }),
-      level: "campaign",
-      limit: "50",
-    }
+    { fields, time_range: JSON.stringify(dateRange), level: "campaign", limit: "50" }
   );
 
-  return (data.data ?? []).map((insight) => {
-    const spend = parseFloat(insight.spend ?? "0");
-    const impressions = parseInt(insight.impressions ?? "0");
-    const clicks = parseInt(insight.clicks ?? "0");
-    const leads = getActionValue(insight.actions, "lead");
-    const purchases = getActionValue(insight.actions, "purchase");
-    const purchaseValue = getActionValue(insight.actions, "purchase_value");
-    const video3s = parseFloat(
-      insight.video_p25_watched_actions?.[0]?.value ?? "0"
-    );
+  return (data.data ?? []).map((i) => {
+    const spend = parseFloat(i.spend ?? "0");
+    const purchaseValue = getActionValue(i.actions, "purchase_value");
+    const video3s = parseFloat(i.video_p25_watched_actions?.[0]?.value ?? "0");
+    const impressions = parseInt(i.impressions ?? "0");
 
     return {
-      id: insight.campaign_id ?? "",
-      name: insight.campaign_name ?? "—",
+      id: i.campaign_id ?? "",
+      name: i.campaign_name ?? "—",
       status: "ACTIVE",
       spend,
       impressions,
-      clicks,
-      ctr: parseFloat(insight.ctr ?? "0"),
-      cpc: parseFloat(insight.cpc ?? "0"),
-      leads,
-      purchases,
+      clicks: parseInt(i.clicks ?? "0"),
+      ctr: parseFloat(i.ctr ?? "0"),
+      cpc: parseFloat(i.cpc ?? "0"),
+      leads: getActionValue(i.actions, "lead"),
+      purchases: getActionValue(i.actions, "purchase"),
       roas: purchaseValue / Math.max(spend, 0.01),
       hookRate: impressions > 0 ? (video3s / impressions) * 100 : 0,
     };
   });
 }
 
-/**
- * Busca dados diários para o gráfico
- */
-export async function fetchMetaChartData(
-  days = 14
-): Promise<MetaChartPoint[]> {
+export async function fetchMetaAdSets(
+  dateRange: MetaDateRange
+): Promise<MetaAdSetRow[]> {
   const accountId = process.env.META_AD_ACCOUNT_ID;
   if (!accountId) throw new Error("META_AD_ACCOUNT_ID não configurado");
 
-  const { since, until } = getDateRange(days);
-
   const fields = [
-    "spend", "impressions", "clicks", "actions",
+    "adset_id", "adset_name", "campaign_name",
+    "spend", "impressions", "clicks", "ctr", "cpc",
+    "actions", "action_values",
   ].join(",");
 
   const data = await metaFetch<{ data: MetaInsight[] }>(
     `/${accountId}/insights`,
+    { fields, time_range: JSON.stringify(dateRange), level: "adset", limit: "50" }
+  );
+
+  return (data.data ?? []).map((i) => {
+    const spend = parseFloat(i.spend ?? "0");
+    const purchaseValue = getActionValue(i.actions, "purchase_value");
+
+    return {
+      id: i.adset_id ?? "",
+      name: i.adset_name ?? "—",
+      campaignName: i.campaign_name ?? "—",
+      spend,
+      impressions: parseInt(i.impressions ?? "0"),
+      clicks: parseInt(i.clicks ?? "0"),
+      ctr: parseFloat(i.ctr ?? "0"),
+      cpc: parseFloat(i.cpc ?? "0"),
+      leads: getActionValue(i.actions, "lead"),
+      purchases: getActionValue(i.actions, "purchase"),
+      roas: purchaseValue / Math.max(spend, 0.01),
+    };
+  });
+}
+
+export async function fetchMetaAds(
+  dateRange: MetaDateRange
+): Promise<MetaAdRow[]> {
+  const accountId = process.env.META_AD_ACCOUNT_ID;
+  if (!accountId) throw new Error("META_AD_ACCOUNT_ID não configurado");
+
+  const fields = [
+    "ad_id", "ad_name", "adset_name", "campaign_name",
+    "spend", "impressions", "clicks", "ctr", "cpc",
+    "actions", "action_values",
+    "video_p25_watched_actions", "video_30_sec_watched_actions",
+  ].join(",");
+
+  const data = await metaFetch<{ data: MetaInsight[] }>(
+    `/${accountId}/insights`,
+    { fields, time_range: JSON.stringify(dateRange), level: "ad", limit: "100" }
+  );
+
+  return (data.data ?? []).map((i) => {
+    const spend = parseFloat(i.spend ?? "0");
+    const purchaseValue = getActionValue(i.actions, "purchase_value");
+    const impressions = parseInt(i.impressions ?? "0");
+    const video3s = parseFloat(
+      i.video_30_sec_watched_actions?.[0]?.value ??
+      i.video_p25_watched_actions?.[0]?.value ?? "0"
+    );
+
+    return {
+      id: i.ad_id ?? "",
+      name: i.ad_name ?? "—",
+      adsetName: i.adset_name ?? "—",
+      campaignName: i.campaign_name ?? "—",
+      spend,
+      impressions,
+      clicks: parseInt(i.clicks ?? "0"),
+      ctr: parseFloat(i.ctr ?? "0"),
+      cpc: parseFloat(i.cpc ?? "0"),
+      leads: getActionValue(i.actions, "lead"),
+      purchases: getActionValue(i.actions, "purchase"),
+      roas: purchaseValue / Math.max(spend, 0.01),
+      hookRate: impressions > 0 ? (video3s / impressions) * 100 : 0,
+    };
+  });
+}
+
+export async function fetchMetaChartData(
+  dateRange: MetaDateRange
+): Promise<MetaChartPoint[]> {
+  const accountId = process.env.META_AD_ACCOUNT_ID;
+  if (!accountId) throw new Error("META_AD_ACCOUNT_ID não configurado");
+
+  const data = await metaFetch<{ data: MetaInsight[] }>(
+    `/${accountId}/insights`,
     {
-      fields,
-      time_range: JSON.stringify({ since, until }),
+      fields: "spend,impressions,clicks,actions",
+      time_range: JSON.stringify(dateRange),
       time_increment: "1",
       level: "account",
     }
   );
 
-  return (data.data ?? []).map((insight) => ({
-    date: insight.date_start,
-    spend: parseFloat(insight.spend ?? "0"),
-    impressions: parseInt(insight.impressions ?? "0"),
-    clicks: parseInt(insight.clicks ?? "0"),
-    leads: getActionValue(insight.actions, "lead"),
-    purchases: getActionValue(insight.actions, "purchase"),
+  return (data.data ?? []).map((i) => ({
+    date: i.date_start,
+    spend: parseFloat(i.spend ?? "0"),
+    impressions: parseInt(i.impressions ?? "0"),
+    clicks: parseInt(i.clicks ?? "0"),
+    leads: getActionValue(i.actions, "lead"),
+    purchases: getActionValue(i.actions, "purchase"),
   }));
 }
 
-/**
- * Busca todos os dados para o dashboard Meta Ads
- */
 export async function fetchMetaAdsDashboard(
-  days = 30
+  dateRange: MetaDateRange
 ): Promise<MetaAdsDashboardData> {
-  const [metrics, campaigns, chartData] = await Promise.all([
-    fetchMetaAccountInsights(days),
-    fetchMetaCampaignInsights(days),
-    fetchMetaChartData(Math.min(days, 14)),
+  const [metrics, campaigns, adsets, ads, chartData] = await Promise.all([
+    fetchMetaAccountInsights(dateRange),
+    fetchMetaCampaigns(dateRange),
+    fetchMetaAdSets(dateRange),
+    fetchMetaAds(dateRange),
+    fetchMetaChartData(dateRange),
   ]);
 
-  const { since, until } = getDateRange(days);
-
-  return { metrics, campaigns, chartData, dateRange: { since, until } };
+  return { metrics, campaigns, adsets, ads, chartData, dateRange };
 }

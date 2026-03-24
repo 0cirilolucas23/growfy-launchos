@@ -1,12 +1,18 @@
 import { NextRequest, NextResponse } from "next/server";
-import { fetchMetaAdsDashboard } from "@/lib/meta-ads-service";
+import { fetchMetaAdsDashboard, getPresetDateRange } from "@/lib/meta-ads-service";
 
 export async function GET(req: NextRequest) {
   try {
     const { searchParams } = new URL(req.url);
-    const days = parseInt(searchParams.get("days") ?? "30");
+    const since = searchParams.get("since");
+    const until = searchParams.get("until");
+    const preset = searchParams.get("preset") ?? "30d";
 
-    const data = await fetchMetaAdsDashboard(days);
+    const dateRange = since && until
+      ? { since, until }
+      : getPresetDateRange(preset);
+
+    const data = await fetchMetaAdsDashboard(dateRange);
     return NextResponse.json(data);
   } catch (error) {
     console.error("❌ [Meta Ads API]", error);

@@ -23,7 +23,17 @@ const sections = [
   { label: "Principal", items: [{ href: "/dashboard", label: "Visão Geral", icon: LayoutDashboard }] },
   { label: "Canais", items: [{ href: "/dashboard/meta-ads", label: "Meta Ads", icon: MetaIcon }, { href: "/dashboard/google-ads", label: "Google Ads", icon: Search }] },
   { label: "Gestão", items: [{ href: "/dashboard/clientes", label: "Clientes", icon: Users }, { href: "/dashboard/pagamentos", label: "Pagamentos", icon: CreditCard }, { href: "/dashboard/relatorios", label: "Relatórios", icon: BarChart2 }] },
-  { label: "Sistema", items: [{ href: "/dashboard/webhooks", label: "Webhooks", icon: Webhook }, { href: "/dashboard/importar", label: "Importar dados", icon: Download }, { href: "/dashboard/notificacoes", label: "Notificações", icon: Bell }, { href: "/dashboard/docs", label: "Documentação", icon: FileText },] },
+  {
+  label: "Sistema",
+  items: [
+    { href: "/dashboard/configuracoes", label: "Configurações", icon: Settings },
+    { href: "/dashboard/webhooks", label: "Webhooks", icon: Webhook },
+    { href: "/dashboard/notificacoes", label: "Notificações", icon: Bell },
+    { href: "/dashboard/docs", label: "Documentação", icon: FileText },
+        { href: "/dashboard/importar", label: "Importar dados", icon: Download },
+
+  ],
+},
   { label: "Planejamento", items: [{ href: "/dashboard/planning", label: "Eng. Reversa", icon: Calculator }] },
 ];
 
@@ -91,7 +101,7 @@ export function Sidebar() {
       </nav>
 
       <div className="border-t border-white/[0.06] px-3 py-3 space-y-0.5">
-        <Link href="/dashboard/settings"
+        <Link href="/dashboard/configuracoes"
           className="flex items-center gap-2.5 rounded-lg px-2.5 py-2 text-xs font-medium text-white/30 hover:bg-white/[0.05] hover:text-white/60 transition-all">
           <Settings className="h-3.5 w-3.5 shrink-0" />
           Configurações
