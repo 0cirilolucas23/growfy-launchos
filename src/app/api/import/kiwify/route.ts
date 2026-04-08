@@ -3,6 +3,8 @@ import { fetchAllKiwifyOrders, normalizeKiwifyOrder, getOrderId } from "@/lib/ki
 import { initializeApp, getApps, cert } from "firebase-admin/app";
 import { getFirestore } from "firebase-admin/firestore";
 
+export const maxDuration = 60;
+
 function getAdminDb() {
   if (!getApps().length) {
     initializeApp({
