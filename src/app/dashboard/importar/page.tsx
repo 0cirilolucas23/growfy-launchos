@@ -63,8 +63,13 @@ export default function ImportarPage() {
         body: JSON.stringify({ workspaceId }),
       });
 
-      const data = (await res.json()) as ImportResult & { error?: string };
-
+      const text = await res.text();
+      let data: ImportResult & { error?: string };
+      try {
+        data = JSON.parse(text);
+      } catch {
+        throw new Error(`Timeout ou erro do servidor: ${text.slice(0, 120)}`);
+      }
       if (data.error) throw new Error(data.error);
 
       setKiwify((prev) => ({
