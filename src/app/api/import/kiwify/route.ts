@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { fetchAllKiwifyOrders, normalizeKiwifyOrder } from "@/lib/kiwify-api-service";
+import { fetchAllKiwifyOrders, normalizeKiwifyOrder, getOrderId } from "@/lib/kiwify-api-service";
 import { initializeApp, getApps, cert } from "firebase-admin/app";
 import { getFirestore } from "firebase-admin/firestore";
 
@@ -12,46 +12,102 @@ function getAdminDb() {
         privateKey: process.env.FIREBASE_ADMIN_PRIVATE_KEY?.replace(/\\n/g, "\n"),
       }),
     });
+    // ✅ settings() apenas na primeira inicialização
+    getFirestore().settings({ ignoreUndefinedProperties: true });
   }
   return getFirestore();
 }
 
+// ─────────────────────────────────────────────
+// GET — verifica quantos eventos já existem
+// ─────────────────────────────────────────────
+export async function GET(req: NextRequest) {
+  const workspaceId = req.nextUrl.searchParams.get("workspace");
+
+  if (!workspaceId) {
+    return NextResponse.json({ error: "workspace obrigatório" }, { status: 400 });
+  }
+
+  try {
+    const db = getAdminDb();
+
+    const snapshot = await db
+      .collection("webhook_events")
+      .where("workspaceId", "==", workspaceId)
+      .where("source", "==", "kiwify")
+      .limit(1)
+      .get();
+
+    let total = 0;
+    if (!snapshot.empty) {
+      const countSnap = await db
+        .collection("webhook_events")
+        .where("workspaceId", "==", workspaceId)
+        .where("source", "==", "kiwify")
+        .count()
+        .get();
+      total = countSnap.data().count;
+    }
+
+    return NextResponse.json({ status: "ok", kiwify_events: total, workspace: workspaceId });
+  } catch (error) {
+    console.warn("[Kiwify Import GET] Erro:", error);
+    return NextResponse.json({ status: "ok", kiwify_events: 0, workspace: workspaceId });
+  }
+}
+
+// ─────────────────────────────────────────────
+// POST — importa histórico completo
+// ─────────────────────────────────────────────
 export async function POST(req: NextRequest) {
   try {
-    const { workspaceId } = await req.json() as { workspaceId: string };
+    const { workspaceId } = (await req.json()) as { workspaceId: string };
 
     if (!workspaceId) {
       return NextResponse.json({ error: "workspaceId obrigatório" }, { status: 400 });
     }
 
-    console.log(`🔄 [Kiwify Import] Iniciando importação para workspace: ${workspaceId}`);
+    console.log(`🔄 [Kiwify Import] Iniciando para workspace: ${workspaceId}`);
 
     const db = getAdminDb();
     let imported = 0;
     let skipped = 0;
     let errors = 0;
-    let total = 0;
 
-    const orders = await fetchAllKiwifyOrders((current, t) => {
-      total = t;
-      console.log(`📦 [Kiwify Import] Buscando: ${current}/${t}`);
+    const orders = await fetchAllKiwifyOrders((current, label) => {
+      console.log(`📦 [Kiwify Import] ${label} — ${current} coletados`);
     });
 
-    console.log(`📦 [Kiwify Import] Total de pedidos: ${orders.length}`);
+    console.log(`📦 [Kiwify Import] Total coletado: ${orders.length}`);
 
-    // Batch write to Firestore (max 500 per batch)
+    if (orders.length === 0) {
+      return NextResponse.json({
+        imported: 0, skipped: 0, errors: 0, total: 0,
+        message: "Nenhuma venda encontrada no período.",
+      });
+    }
+
     const BATCH_SIZE = 400;
+
     for (let i = 0; i < orders.length; i += BATCH_SIZE) {
       const batch = db.batch();
       const chunk = orders.slice(i, i + BATCH_SIZE);
+      let batchHasWrites = false;
 
       for (const order of chunk) {
         try {
+          const orderId = getOrderId(order);
+
+          if (!orderId) {
+            console.warn(`⚠️ [Kiwify Import] Pedido sem ID. Campos: ${Object.keys(order).join(", ")}`);
+            errors++;
+            continue;
+          }
+
           const normalized = normalizeKiwifyOrder(order, workspaceId);
-          const docId = `kiwify_${order.order_id}`;
+          const docId = `kiwify_${orderId}`;
           const ref = db.collection("webhook_events").doc(docId);
 
-          // Check if already exists
           const existing = await ref.get();
           if (existing.exists) {
             skipped++;
@@ -60,19 +116,21 @@ export async function POST(req: NextRequest) {
 
           batch.set(ref, normalized);
           imported++;
+          batchHasWrites = true;
         } catch (err) {
-          console.error(`❌ [Kiwify Import] Erro no pedido ${order.order_id}:`, err);
+          console.error(`❌ [Kiwify Import] Erro no pedido ${getOrderId(order)}:`, err);
           errors++;
         }
       }
 
-      await batch.commit();
-      console.log(`✅ [Kiwify Import] Lote salvo: ${imported} importados até agora`);
+      if (batchHasWrites) {
+        await batch.commit();
+        console.log(`✅ [Kiwify Import] Lote salvo: ${imported} importados`);
+      }
     }
 
     const result = { imported, skipped, errors, total: orders.length };
     console.log(`✅ [Kiwify Import] Concluído:`, result);
-
     return NextResponse.json(result);
   } catch (error) {
     console.error("❌ [Kiwify Import]", error);
@@ -80,30 +138,5 @@ export async function POST(req: NextRequest) {
       { error: error instanceof Error ? error.message : "Erro desconhecido" },
       { status: 500 }
     );
-  }
-}
-
-export async function GET(req: NextRequest) {
-  const workspaceId = req.nextUrl.searchParams.get("workspace");
-  if (!workspaceId) {
-    return NextResponse.json({ error: "workspace obrigatório" }, { status: 400 });
-  }
-
-  try {
-    const db = getAdminDb();
-    const snapshot = await db
-      .collection("webhook_events")
-      .where("workspaceId", "==", workspaceId)
-      .where("source", "==", "kiwify")
-      .count()
-      .get();
-
-    return NextResponse.json({
-      status: "ok",
-      kiwify_events: snapshot.data().count,
-      workspace: workspaceId,
-    });
-  } catch (error) {
-    return NextResponse.json({ error: "Erro ao verificar" }, { status: 500 });
   }
 }

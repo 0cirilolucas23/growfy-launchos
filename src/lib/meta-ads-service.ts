@@ -1,12 +1,11 @@
 /**
  * Growfy LaunchOS — Meta Ads Service
- * Integração com a Marketing API do Meta com suporte a filtros e períodos
+ * Integração com a Marketing API do Meta com suporte a filtros, períodos e multi-workspace
  */
 
 // ─────────────────────────────────────────────
 // Types
 // ─────────────────────────────────────────────
-
 export interface MetaInsight {
   campaign_id?: string;
   campaign_name?: string;
@@ -111,17 +110,24 @@ export interface MetaDateRange {
   until: string; // YYYY-MM-DD
 }
 
+// ✅ Credenciais por workspace — evita vazamento entre clientes
+export interface MetaCredentials {
+  token: string;
+  accountId: string;
+}
+
 // ─────────────────────────────────────────────
 // Helpers
 // ─────────────────────────────────────────────
-
 const BASE_URL = "https://graph.facebook.com/v20.0";
 
+// ✅ FIX: aceita credenciais explícitas, com fallback para env vars globais
 async function metaFetch<T>(
   endpoint: string,
-  params: Record<string, string> = {}
+  params: Record<string, string> = {},
+  credentials?: MetaCredentials
 ): Promise<T> {
-  const token = process.env.META_ACCESS_TOKEN;
+  const token = credentials?.token ?? process.env.META_ACCESS_TOKEN;
   if (!token) throw new Error("META_ACCESS_TOKEN não configurado");
 
   const url = new URL(`${BASE_URL}${endpoint}`);
@@ -131,12 +137,10 @@ async function metaFetch<T>(
   }
 
   const res = await fetch(url.toString(), { cache: "no-store" });
-
   if (!res.ok) {
     const err = await res.json();
     throw new Error(`Meta API Error: ${err.error?.message ?? res.statusText}`);
   }
-
   return res.json();
 }
 
@@ -182,26 +186,14 @@ function parseMetrics(insights: MetaInsight[]): MetaAdsMetrics {
 export function getPresetDateRange(preset: string): MetaDateRange {
   const until = new Date();
   const since = new Date();
-
   switch (preset) {
-    case "today":
-      break;
-    case "7d":
-      since.setDate(since.getDate() - 7);
-      break;
-    case "14d":
-      since.setDate(since.getDate() - 14);
-      break;
-    case "30d":
-      since.setDate(since.getDate() - 30);
-      break;
-    case "90d":
-      since.setDate(since.getDate() - 90);
-      break;
-    default:
-      since.setDate(since.getDate() - 30);
+    case "today": break;
+    case "7d": since.setDate(since.getDate() - 7); break;
+    case "14d": since.setDate(since.getDate() - 14); break;
+    case "30d": since.setDate(since.getDate() - 30); break;
+    case "90d": since.setDate(since.getDate() - 90); break;
+    default: since.setDate(since.getDate() - 30);
   }
-
   return {
     since: since.toISOString().split("T")[0],
     until: until.toISOString().split("T")[0],
@@ -209,13 +201,13 @@ export function getPresetDateRange(preset: string): MetaDateRange {
 }
 
 // ─────────────────────────────────────────────
-// API Functions
+// API Functions — todas aceitam credentials opcionais
 // ─────────────────────────────────────────────
-
 export async function fetchMetaAccountInsights(
-  dateRange: MetaDateRange
+  dateRange: MetaDateRange,
+  credentials?: MetaCredentials
 ): Promise<MetaAdsMetrics> {
-  const accountId = process.env.META_AD_ACCOUNT_ID;
+  const accountId = credentials?.accountId ?? process.env.META_AD_ACCOUNT_ID;
   if (!accountId) throw new Error("META_AD_ACCOUNT_ID não configurado");
 
   const fields = [
@@ -226,16 +218,17 @@ export async function fetchMetaAccountInsights(
 
   const data = await metaFetch<{ data: MetaInsight[] }>(
     `/${accountId}/insights`,
-    { fields, time_range: JSON.stringify(dateRange), level: "account" }
+    { fields, time_range: JSON.stringify(dateRange), level: "account" },
+    credentials
   );
-
   return parseMetrics(data.data ?? []);
 }
 
 export async function fetchMetaCampaigns(
-  dateRange: MetaDateRange
+  dateRange: MetaDateRange,
+  credentials?: MetaCredentials
 ): Promise<MetaCampaignRow[]> {
-  const accountId = process.env.META_AD_ACCOUNT_ID;
+  const accountId = credentials?.accountId ?? process.env.META_AD_ACCOUNT_ID;
   if (!accountId) throw new Error("META_AD_ACCOUNT_ID não configurado");
 
   const fields = [
@@ -246,7 +239,8 @@ export async function fetchMetaCampaigns(
 
   const data = await metaFetch<{ data: MetaInsight[] }>(
     `/${accountId}/insights`,
-    { fields, time_range: JSON.stringify(dateRange), level: "campaign", limit: "50" }
+    { fields, time_range: JSON.stringify(dateRange), level: "campaign", limit: "50" },
+    credentials
   );
 
   return (data.data ?? []).map((i) => {
@@ -254,7 +248,6 @@ export async function fetchMetaCampaigns(
     const purchaseValue = getActionValue(i.actions, "purchase_value");
     const video3s = parseFloat(i.video_p25_watched_actions?.[0]?.value ?? "0");
     const impressions = parseInt(i.impressions ?? "0");
-
     return {
       id: i.campaign_id ?? "",
       name: i.campaign_name ?? "—",
@@ -273,9 +266,10 @@ export async function fetchMetaCampaigns(
 }
 
 export async function fetchMetaAdSets(
-  dateRange: MetaDateRange
+  dateRange: MetaDateRange,
+  credentials?: MetaCredentials
 ): Promise<MetaAdSetRow[]> {
-  const accountId = process.env.META_AD_ACCOUNT_ID;
+  const accountId = credentials?.accountId ?? process.env.META_AD_ACCOUNT_ID;
   if (!accountId) throw new Error("META_AD_ACCOUNT_ID não configurado");
 
   const fields = [
@@ -286,13 +280,13 @@ export async function fetchMetaAdSets(
 
   const data = await metaFetch<{ data: MetaInsight[] }>(
     `/${accountId}/insights`,
-    { fields, time_range: JSON.stringify(dateRange), level: "adset", limit: "50" }
+    { fields, time_range: JSON.stringify(dateRange), level: "adset", limit: "50" },
+    credentials
   );
 
   return (data.data ?? []).map((i) => {
     const spend = parseFloat(i.spend ?? "0");
     const purchaseValue = getActionValue(i.actions, "purchase_value");
-
     return {
       id: i.adset_id ?? "",
       name: i.adset_name ?? "—",
@@ -310,9 +304,10 @@ export async function fetchMetaAdSets(
 }
 
 export async function fetchMetaAds(
-  dateRange: MetaDateRange
+  dateRange: MetaDateRange,
+  credentials?: MetaCredentials
 ): Promise<MetaAdRow[]> {
-  const accountId = process.env.META_AD_ACCOUNT_ID;
+  const accountId = credentials?.accountId ?? process.env.META_AD_ACCOUNT_ID;
   if (!accountId) throw new Error("META_AD_ACCOUNT_ID não configurado");
 
   const fields = [
@@ -324,7 +319,8 @@ export async function fetchMetaAds(
 
   const data = await metaFetch<{ data: MetaInsight[] }>(
     `/${accountId}/insights`,
-    { fields, time_range: JSON.stringify(dateRange), level: "ad", limit: "100" }
+    { fields, time_range: JSON.stringify(dateRange), level: "ad", limit: "100" },
+    credentials
   );
 
   return (data.data ?? []).map((i) => {
@@ -335,7 +331,6 @@ export async function fetchMetaAds(
       i.video_30_sec_watched_actions?.[0]?.value ??
       i.video_p25_watched_actions?.[0]?.value ?? "0"
     );
-
     return {
       id: i.ad_id ?? "",
       name: i.ad_name ?? "—",
@@ -355,9 +350,10 @@ export async function fetchMetaAds(
 }
 
 export async function fetchMetaChartData(
-  dateRange: MetaDateRange
+  dateRange: MetaDateRange,
+  credentials?: MetaCredentials
 ): Promise<MetaChartPoint[]> {
-  const accountId = process.env.META_AD_ACCOUNT_ID;
+  const accountId = credentials?.accountId ?? process.env.META_AD_ACCOUNT_ID;
   if (!accountId) throw new Error("META_AD_ACCOUNT_ID não configurado");
 
   const data = await metaFetch<{ data: MetaInsight[] }>(
@@ -367,7 +363,8 @@ export async function fetchMetaChartData(
       time_range: JSON.stringify(dateRange),
       time_increment: "1",
       level: "account",
-    }
+    },
+    credentials
   );
 
   return (data.data ?? []).map((i) => ({
@@ -381,15 +378,15 @@ export async function fetchMetaChartData(
 }
 
 export async function fetchMetaAdsDashboard(
-  dateRange: MetaDateRange
+  dateRange: MetaDateRange,
+  credentials?: MetaCredentials
 ): Promise<MetaAdsDashboardData> {
   const [metrics, campaigns, adsets, ads, chartData] = await Promise.all([
-    fetchMetaAccountInsights(dateRange),
-    fetchMetaCampaigns(dateRange),
-    fetchMetaAdSets(dateRange),
-    fetchMetaAds(dateRange),
-    fetchMetaChartData(dateRange),
+    fetchMetaAccountInsights(dateRange, credentials),
+    fetchMetaCampaigns(dateRange, credentials),
+    fetchMetaAdSets(dateRange, credentials),
+    fetchMetaAds(dateRange, credentials),
+    fetchMetaChartData(dateRange, credentials),
   ]);
-
   return { metrics, campaigns, adsets, ads, chartData, dateRange };
 }

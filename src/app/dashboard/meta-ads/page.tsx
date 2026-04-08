@@ -1,18 +1,68 @@
 "use client";
-
 import React, { useState, useEffect, useCallback } from "react";
-import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from "recharts";
-import { RefreshCw, Wifi, WifiOff, Calendar, ChevronDown, X } from "lucide-react";
-import { generateMockChannelData, ChannelData } from "@/lib/channel-service";
-import { ChannelDashboard } from "@/components/channel-dashboard";
+import {
+  LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
+} from "recharts";
+import { RefreshCw, Wifi, WifiOff, Calendar, ChevronDown } from "lucide-react";
+import { collection, query, where, getDocs, Timestamp } from "firebase/firestore";
+import { db } from "@/lib/firebase";
+import { useWorkspace } from "@/contexts/workspace-context";
 import type { MetaAdsDashboardData, MetaDateRange } from "@/lib/meta-ads-service";
 import { formatCurrency, formatNumber, formatPercentage } from "@/lib/metrics-service";
 import { cn } from "@/lib/utils";
 
 // ─────────────────────────────────────────────
+// Kiwify metrics — query simples sem índice composto
+// ─────────────────────────────────────────────
+interface KiwifyMetrics {
+  revenue: number;
+  sales: number;
+  dailyRevenue: Record<string, number>; // "MM/DD" → valor
+}
+
+async function fetchKiwifyMetrics(
+  workspaceId: string,
+  dateRange: MetaDateRange
+): Promise<KiwifyMetrics> {
+  const since = new Date(dateRange.since + "T00:00:00");
+  const until = new Date(dateRange.until + "T23:59:59");
+
+  const q = query(
+    collection(db, "webhook_events"),
+    where("workspaceId", "==", workspaceId),
+    where("source", "==", "kiwify")
+  );
+
+  const snapshot = await getDocs(q);
+  let revenue = 0;
+  let sales = 0;
+  const dailyRevenue: Record<string, number> = {};
+
+  snapshot.forEach((doc) => {
+    const data = doc.data();
+    if (data.status !== "approved") return;
+    if (data.type !== "purchase") return;
+
+    const ts: Date = data.timestamp instanceof Timestamp
+      ? data.timestamp.toDate()
+      : new Date(data.timestamp as string);
+
+    if (ts < since || ts > until) return;
+
+    revenue += (data.amount as number) ?? 0;
+    sales += 1;
+
+    // Agrupa por dia no formato MM/DD (igual ao chartData do Meta)
+    const dayKey = ts.toISOString().slice(5, 10).replace("-", "/");
+    dailyRevenue[dayKey] = (dailyRevenue[dayKey] ?? 0) + ((data.amount as number) ?? 0);
+  });
+
+  return { revenue, sales, dailyRevenue };
+}
+
+// ─────────────────────────────────────────────
 // Date Range Picker
 // ─────────────────────────────────────────────
-
 const PRESETS = [
   { label: "Hoje", value: "today" },
   { label: "7 dias", value: "7d" },
@@ -57,10 +107,7 @@ function DateRangePicker({ onChange }: { onChange: (range: MetaDateRange) => voi
   }, []);
 
   function handlePreset(value: string) {
-    if (value === "custom") {
-      setShowDropdown((v) => !v);
-      return;
-    }
+    if (value === "custom") { setShowDropdown((v) => !v); return; }
     setPreset(value);
     setShowDropdown(false);
     onChange(getPresetDates(value));
@@ -74,9 +121,10 @@ function DateRangePicker({ onChange }: { onChange: (range: MetaDateRange) => voi
     }
   }
 
-  const displayLabel = preset === "custom" && customSince && customUntil
-    ? `${customSince.slice(5).replace("-","/")}/${customSince.slice(0,4)} → ${customUntil.slice(5).replace("-","/")}/${customUntil.slice(0,4)}`
-    : "Personalizado";
+  const displayLabel =
+    preset === "custom" && customSince && customUntil
+      ? `${customSince.slice(5).replace("-", "/")} → ${customUntil.slice(5).replace("-", "/")}`
+      : "Personalizado";
 
   return (
     <div className="flex flex-wrap items-center gap-1.5">
@@ -89,56 +137,34 @@ function DateRangePicker({ onChange }: { onChange: (range: MetaDateRange) => voi
               preset === p.value
                 ? "bg-white text-[#08080A] border-white"
                 : "border-white/[0.07] bg-white/[0.03] text-white/40 hover:text-white/70"
-            )}>
+            )}
+          >
             {p.value === "custom" && <Calendar className="h-3 w-3" />}
             {p.value === "custom" ? displayLabel : p.label}
             {p.value === "custom" && (
               <ChevronDown className={cn("h-3 w-3 transition-transform", showDropdown && "rotate-180")} />
             )}
           </button>
-
-          {/* Dropdown com dois calendários lado a lado */}
           {p.value === "custom" && showDropdown && (
             <div className="absolute left-0 top-full mt-1.5 z-50 rounded-xl border border-white/[0.10] bg-[#0D0D10] p-4 shadow-2xl">
               <div className="flex gap-4">
-                {/* De */}
                 <div className="space-y-2">
-                  <label className="block text-[10px] font-bold uppercase tracking-wider text-white/30">
-                    De
-                  </label>
-                  <input
-                    type="date"
-                    value={customSince}
-                    onChange={(e) => setCustomSince(e.target.value)}
-                    className="rounded-lg border border-white/[0.08] bg-white/[0.04] px-3 py-2 text-xs text-white outline-none focus:border-white/20 [color-scheme:dark]"
-                  />
+                  <label className="block text-[10px] font-bold uppercase tracking-wider text-white/30">De</label>
+                  <input type="date" value={customSince} onChange={(e) => setCustomSince(e.target.value)}
+                    className="rounded-lg border border-white/[0.08] bg-white/[0.04] px-3 py-2 text-xs text-white outline-none focus:border-white/20 [color-scheme:dark]" />
                 </div>
-
-                {/* Divisor */}
                 <div className="flex items-end pb-2">
                   <span className="text-white/20 text-sm">→</span>
                 </div>
-
-                {/* Até */}
                 <div className="space-y-2">
-                  <label className="block text-[10px] font-bold uppercase tracking-wider text-white/30">
-                    Até
-                  </label>
-                  <input
-                    type="date"
-                    value={customUntil}
-                    onChange={(e) => setCustomUntil(e.target.value)}
+                  <label className="block text-[10px] font-bold uppercase tracking-wider text-white/30">Até</label>
+                  <input type="date" value={customUntil} onChange={(e) => setCustomUntil(e.target.value)}
                     min={customSince}
-                    className="rounded-lg border border-white/[0.08] bg-white/[0.04] px-3 py-2 text-xs text-white outline-none focus:border-white/20 [color-scheme:dark]"
-                  />
+                    className="rounded-lg border border-white/[0.08] bg-white/[0.04] px-3 py-2 text-xs text-white outline-none focus:border-white/20 [color-scheme:dark]" />
                 </div>
               </div>
-
-              <button
-                onClick={applyCustom}
-                disabled={!customSince || !customUntil}
-                className="mt-3 w-full rounded-lg bg-white py-2 text-[11px] font-bold text-[#08080A] hover:bg-white/90 disabled:opacity-40 transition-all"
-              >
+              <button onClick={applyCustom} disabled={!customSince || !customUntil}
+                className="mt-3 w-full rounded-lg bg-white py-2 text-[11px] font-bold text-[#08080A] hover:bg-white/90 disabled:opacity-40 transition-all">
                 Aplicar período
               </button>
             </div>
@@ -152,80 +178,35 @@ function DateRangePicker({ onChange }: { onChange: (range: MetaDateRange) => voi
 // ─────────────────────────────────────────────
 // Filters
 // ─────────────────────────────────────────────
-
 type FilterLevel = "campaign" | "adset" | "ad";
+interface FilterState { level: FilterLevel; search: string; minRoas: string; minSpend: string; }
 
-interface FilterState {
-  level: FilterLevel;
-  search: string;
-  minRoas: string;
-  minSpend: string;
-}
-
-function Filters({
-  filters,
-  onChange,
-  campaigns,
-}: {
-  filters: FilterState;
-  onChange: (f: FilterState) => void;
-  campaigns: string[];
-}) {
+function Filters({ filters, onChange }: { filters: FilterState; onChange: (f: FilterState) => void; campaigns: string[]; }) {
   return (
     <div className="flex flex-wrap items-center gap-2">
-      {/* Level tabs */}
       <div className="flex rounded-lg border border-white/[0.07] bg-white/[0.03] p-0.5">
-        {([
-          { value: "campaign", label: "Campanhas" },
-          { value: "adset", label: "Públicos" },
-          { value: "ad", label: "Criativos" },
-        ] as const).map((tab) => (
-          <button key={tab.value}
-            onClick={() => onChange({ ...filters, level: tab.value })}
-            className={cn(
-              "rounded-md px-2.5 py-1.5 text-[11px] font-semibold transition-all",
-              filters.level === tab.value
-                ? "bg-white text-[#08080A]"
-                : "text-white/30 hover:text-white/60"
-            )}>
+        {([{ value: "campaign", label: "Campanhas" }, { value: "adset", label: "Públicos" }, { value: "ad", label: "Criativos" }] as const).map((tab) => (
+          <button key={tab.value} onClick={() => onChange({ ...filters, level: tab.value })}
+            className={cn("rounded-md px-2.5 py-1.5 text-[11px] font-semibold transition-all",
+              filters.level === tab.value ? "bg-white text-[#08080A]" : "text-white/30 hover:text-white/60")}>
             {tab.label}
           </button>
         ))}
       </div>
-
-      {/* Search */}
-      <input
-        type="text"
-        placeholder="Buscar por nome..."
-        value={filters.search}
+      <input type="text" placeholder="Buscar por nome..." value={filters.search}
         onChange={(e) => onChange({ ...filters, search: e.target.value })}
-        className="rounded-lg border border-white/[0.07] bg-white/[0.03] px-3 py-1.5 text-[11px] text-white placeholder:text-white/20 outline-none focus:border-white/15 transition-all w-48"
-      />
-
-      {/* Min ROAS */}
+        className="rounded-lg border border-white/[0.07] bg-white/[0.03] px-3 py-1.5 text-[11px] text-white placeholder:text-white/20 outline-none focus:border-white/15 transition-all w-48" />
       <div className="flex items-center gap-1.5 rounded-lg border border-white/[0.07] bg-white/[0.03] px-3 py-1.5">
         <span className="text-[11px] text-white/30">ROAS ≥</span>
-        <input
-          type="number"
-          placeholder="0"
-          value={filters.minRoas}
+        <input type="number" placeholder="0" value={filters.minRoas}
           onChange={(e) => onChange({ ...filters, minRoas: e.target.value })}
-          className="w-12 bg-transparent text-[11px] text-white outline-none"
-          min="0" step="0.1"
-        />
+          className="w-12 bg-transparent text-[11px] text-white outline-none" min="0" step="0.1" />
       </div>
-
-      {/* Min Spend */}
       <div className="flex items-center gap-1.5 rounded-lg border border-white/[0.07] bg-white/[0.03] px-3 py-1.5">
         <span className="text-[11px] text-white/30">Invest. ≥ R$</span>
-        <input
-          type="number"
-          placeholder="0"
-          value={filters.minSpend}
+        <input type="number" placeholder="0" value={filters.minSpend}
           onChange={(e) => onChange({ ...filters, minSpend: e.target.value })}
-          className="w-16 bg-transparent text-[11px] text-white outline-none"
-          min="0"
-        />
+          className="w-16 bg-transparent text-[11px] text-white outline-none" min="0" />
       </div>
     </div>
   );
@@ -234,7 +215,6 @@ function Filters({
 // ─────────────────────────────────────────────
 // Table
 // ─────────────────────────────────────────────
-
 function getRoasBadge(roas: number) {
   if (roas >= 3) return { label: "Ótimo", color: "#00D861" };
   if (roas >= 1.5) return { label: "Bom", color: "#FAE125" };
@@ -242,29 +222,16 @@ function getRoasBadge(roas: number) {
 }
 
 function MetaTable({ rows }: {
-  rows: Array<{
-    id: string; name: string; subName?: string;
-    spend: number; impressions: number; clicks: number;
-    ctr: number; cpc: number; leads: number;
-    purchases: number; roas: number; hookRate?: number;
-  }>;
+  rows: Array<{ id: string; name: string; subName?: string; spend: number; impressions: number; clicks: number; ctr: number; cpc: number; leads: number; purchases: number; roas: number; hookRate?: number; }>;
 }) {
-  if (rows.length === 0) {
-    return <p className="py-8 text-center text-xs text-white/20">Nenhum resultado encontrado</p>;
-  }
-
+  if (rows.length === 0) return <p className="py-8 text-center text-xs text-white/20">Nenhum resultado encontrado</p>;
   return (
     <div className="overflow-x-auto">
       <table className="w-full text-xs">
         <thead>
           <tr className="border-b border-white/[0.06]">
             {["Nome", "Invest.", "Impressões", "Cliques", "CTR", "CPC", "Leads", "Vendas", "ROAS", "Gancho", "Status"].map((col) => (
-              <th key={col} className={cn(
-                "pb-2.5 pr-4 text-[10px] font-bold uppercase tracking-wider text-white/20 whitespace-nowrap",
-                col === "Nome" ? "text-left" : "text-right"
-              )}>
-                {col}
-              </th>
+              <th key={col} className={cn("pb-2.5 pr-4 text-[10px] font-bold uppercase tracking-wider text-white/20 whitespace-nowrap", col === "Nome" ? "text-left" : "text-right")}>{col}</th>
             ))}
           </tr>
         </thead>
@@ -285,14 +252,9 @@ function MetaTable({ rows }: {
                 <td className="py-3 pr-4 text-right tabular-nums text-white/60">{formatNumber(row.leads)}</td>
                 <td className="py-3 pr-4 text-right tabular-nums text-white/60">{formatNumber(row.purchases)}</td>
                 <td className="py-3 pr-4 text-right tabular-nums font-bold text-white/80">{row.roas.toFixed(2)}x</td>
-                <td className="py-3 pr-4 text-right tabular-nums text-white/60">
-                  {row.hookRate !== undefined ? formatPercentage(row.hookRate) : "—"}
-                </td>
+                <td className="py-3 pr-4 text-right tabular-nums text-white/60">{row.hookRate !== undefined ? formatPercentage(row.hookRate) : "—"}</td>
                 <td className="py-3 text-right">
-                  <span className="inline-flex items-center rounded-full border px-2 py-0.5 text-[9px] font-bold"
-                    style={{ borderColor: `${badge.color}30`, color: badge.color }}>
-                    {badge.label}
-                  </span>
+                  <span className="inline-flex items-center rounded-full border px-2 py-0.5 text-[9px] font-bold" style={{ borderColor: `${badge.color}30`, color: badge.color }}>{badge.label}</span>
                 </td>
               </tr>
             );
@@ -306,26 +268,18 @@ function MetaTable({ rows }: {
 // ─────────────────────────────────────────────
 // KPI Card
 // ─────────────────────────────────────────────
-
-function KPI({ label, value, accent }: { label: string; value: string; accent: string }) {
+function KPI({ label, value, accent, sub }: { label: string; value: string; accent: string; sub?: string; }) {
   return (
     <div className="rounded-xl border border-white/[0.07] bg-white/[0.02] p-4">
       <p className="text-[10px] font-bold uppercase tracking-wider text-white/20">{label}</p>
       <p className="mt-1.5 text-xl font-black text-white">{value}</p>
       <div className="mt-1.5 h-0.5 w-8 rounded-full" style={{ backgroundColor: accent }} />
+      {sub && <p className="mt-1 text-[10px] text-white/20">{sub}</p>}
     </div>
   );
 }
 
-// ─────────────────────────────────────────────
-// Chart Tooltip
-// ─────────────────────────────────────────────
-
-function ChartTooltip({ active, payload, label }: {
-  active?: boolean;
-  payload?: Array<{ name: string; value: number; color: string }>;
-  label?: string;
-}) {
+function ChartTooltip({ active, payload, label }: { active?: boolean; payload?: Array<{ name: string; value: number; color: string }>; label?: string; }) {
   if (!active || !payload?.length) return null;
   return (
     <div className="rounded-xl border border-white/[0.08] bg-[#111113] p-3 shadow-xl text-xs">
@@ -344,31 +298,31 @@ function ChartTooltip({ active, payload, label }: {
 // ─────────────────────────────────────────────
 // Page
 // ─────────────────────────────────────────────
-
 export default function MetaAdsPage() {
+  const { activeWorkspace: workspace } = useWorkspace();
+  const workspaceId = workspace?.id ?? null;
+
   const [apiData, setApiData] = useState<MetaAdsDashboardData | null>(null);
-  const [mockData] = useState(() => generateMockChannelData("meta", 14));
+  const [kiwifyMetrics, setKiwifyMetrics] = useState<KiwifyMetrics | null>(null);
   const [isLive, setIsLive] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [dateRange, setDateRange] = useState<MetaDateRange>(getPresetDates("30d"));
-  const [filters, setFilters] = useState<FilterState>({
-    level: "campaign",
-    search: "",
-    minRoas: "",
-    minSpend: "",
-  });
+  const [filters, setFilters] = useState<FilterState>({ level: "campaign", search: "", minRoas: "", minSpend: "" });
 
   const loadData = useCallback(async (range: MetaDateRange) => {
     setIsLoading(true);
     setError(null);
+
+    // Meta Ads
     try {
       const params = new URLSearchParams({
         since: range.since,
         until: range.until,
+        ...(workspaceId ? { workspaceId } : {}),
       });
       const res = await fetch(`/api/meta-ads?${params}`);
-      const json = await res.json() as MetaAdsDashboardData & { error?: string };
+      const json = (await res.json()) as MetaAdsDashboardData & { error?: string };
       if (json.error) throw new Error(json.error);
       setApiData(json);
       setIsLive(true);
@@ -378,63 +332,77 @@ export default function MetaAdsPage() {
     } finally {
       setIsLoading(false);
     }
-  }, []);
 
-  useEffect(() => { loadData(dateRange); }, []);
+    // Kiwify — query simples, filtragem em JS
+    if (workspaceId) {
+      try {
+        const kw = await fetchKiwifyMetrics(workspaceId, range);
+        console.log("[Meta Ads] Kiwify metrics:", kw);
+        setKiwifyMetrics(kw);
+      } catch (err) {
+        console.error("[Meta Ads] Kiwify error:", err);
+        setKiwifyMetrics(null);
+      }
+    }
+  }, [workspaceId]);
+
+  useEffect(() => {
+    loadData(dateRange);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [workspaceId]);
 
   function handleDateChange(range: MetaDateRange) {
     setDateRange(range);
     loadData(range);
   }
 
-  // Build table rows based on filter level
   function getTableRows() {
     if (!apiData) return [];
-
     const search = filters.search.toLowerCase();
     const minRoas = parseFloat(filters.minRoas) || 0;
     const minSpend = parseFloat(filters.minSpend) || 0;
-
     if (filters.level === "campaign") {
-      return apiData.campaigns
-        .filter((r) => r.name.toLowerCase().includes(search))
-        .filter((r) => r.roas >= minRoas && r.spend >= minSpend)
-        .map((r) => ({ ...r, hookRate: r.hookRate }));
+      return apiData.campaigns.filter((r) => r.name.toLowerCase().includes(search)).filter((r) => r.roas >= minRoas && r.spend >= minSpend);
     }
-
     if (filters.level === "adset") {
       return apiData.adsets
         .filter((r) => r.name.toLowerCase().includes(search) || r.campaignName.toLowerCase().includes(search))
         .filter((r) => r.roas >= minRoas && r.spend >= minSpend)
         .map((r) => ({ ...r, subName: r.campaignName, hookRate: undefined }));
     }
-
-    // ads (criativos)
     return apiData.ads
       .filter((r) => r.name.toLowerCase().includes(search) || r.adsetName.toLowerCase().includes(search))
       .filter((r) => r.roas >= minRoas && r.spend >= minSpend)
       .map((r) => ({ ...r, subName: `${r.campaignName} → ${r.adsetName}` }));
   }
 
+  const metaSpend = apiData?.metrics.spend ?? 0;
+  const kiwifyRevenue = kiwifyMetrics?.revenue ?? 0;
+  const kiwifySales = kiwifyMetrics?.sales ?? 0;
+  const crossRoas = metaSpend > 0 ? kiwifyRevenue / metaSpend : 0;
+  const crossCpa = kiwifySales > 0 ? metaSpend / kiwifySales : 0;
   const metrics = apiData?.metrics;
-  const chartData = (apiData?.chartData ?? []).map((d) => ({
-    ...d,
-    date: d.date.slice(5).replace("-", "/"),
-  }));
+  // Substitua a linha do chartData atual por esta:
+  const chartData = (apiData?.chartData ?? []).map((d) => {
+    const dayKey = d.date.slice(5).replace("-", "/");
+    return {
+      ...d,
+      date: dayKey,
+      faturamento: kiwifyMetrics?.dailyRevenue[dayKey] ?? 0,
+    };
+  });
 
   return (
     <div className="flex-1 flex flex-col overflow-hidden">
       {/* Status bar */}
       <div className={cn(
         "flex items-center gap-2 px-6 py-1.5 text-xs border-b shrink-0",
-        isLive
-          ? "bg-[#00D861]/5 border-[#00D861]/15 text-[#00D861]/70"
-          : "bg-[#FAE125]/5 border-[#FAE125]/15 text-[#FAE125]/70"
+        isLive ? "bg-[#00D861]/5 border-[#00D861]/15 text-[#00D861]/70" : "bg-[#FAE125]/5 border-[#FAE125]/15 text-[#FAE125]/70"
       )}>
         {isLive ? <Wifi className="h-3 w-3" /> : <WifiOff className="h-3 w-3" />}
         <span>{isLive ? "Dados reais — API do Meta" : `Dados simulados${error ? ` — ${error}` : ""}`}</span>
-        <button onClick={() => loadData(dateRange)}
-          className="ml-auto flex items-center gap-1.5 opacity-50 hover:opacity-100 transition-opacity">
+        {kiwifyMetrics && <span className="ml-2 text-[#00D861]/50">· Kiwify conectada</span>}
+        <button onClick={() => loadData(dateRange)} className="ml-auto flex items-center gap-1.5 opacity-50 hover:opacity-100 transition-opacity">
           <RefreshCw className={cn("h-3 w-3", isLoading && "animate-spin")} />
           Atualizar
         </button>
@@ -451,26 +419,22 @@ export default function MetaAdsPage() {
           <h1 className="text-lg font-black text-white tracking-tight">Meta Ads</h1>
         </div>
 
-        {/* Date range picker */}
         <DateRangePicker onChange={handleDateChange} />
 
         {/* KPIs */}
         {isLoading ? (
           <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-            {[...Array(8)].map((_, i) => (
-              <div key={i} className="h-20 animate-pulse rounded-xl bg-white/[0.04]" />
-            ))}
+            {[...Array(7)].map((_, i) => <div key={i} className="h-20 animate-pulse rounded-xl bg-white/[0.04]" />)}
           </div>
         ) : metrics ? (
           <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-            <KPI label="Investimento" value={formatCurrency(metrics.spend)} accent="#E85D22" />
-            <KPI label="Faturamento" value={formatCurrency(metrics.purchaseValue)} accent="#00D861" />
-            <KPI label="Vendas" value={formatNumber(metrics.purchases)} accent="#5050F2" />
-            <KPI label="Leads" value={formatNumber(metrics.leads)} accent="#5050F2" />
-            <KPI label="ROAS" value={`${metrics.roas.toFixed(2)}x`} accent="#00D861" />
-            <KPI label="CPA" value={formatCurrency(metrics.spend / Math.max(metrics.purchases, 1))} accent="#E85D22" />
-            <KPI label="CTR" value={formatPercentage(metrics.ctr)} accent="#FAE125" />
-            <KPI label="Taxa de Gancho" value={formatPercentage(metrics.hookRate)} accent="#FAE125" />
+            <KPI label="Investimento" value={formatCurrency(metaSpend)} accent="#E85D22" sub="Meta Ads" />
+            <KPI label="Faturamento" value={formatCurrency(kiwifyRevenue)} accent="#00D861" sub={kiwifyMetrics ? "Kiwify" : "Sem dados Kiwify"} />
+            <KPI label="Vendas" value={formatNumber(kiwifySales)} accent="#5050F2" sub={kiwifyMetrics ? "Kiwify" : "Sem dados Kiwify"} />
+            <KPI label="Leads" value={formatNumber(metrics.leads)} accent="#5050F2" sub="Meta Ads" />
+            <KPI label="ROAS" value={`${crossRoas.toFixed(2)}x`} accent="#00D861" sub="Kiwify ÷ Meta" />
+            <KPI label="CPA" value={formatCurrency(crossCpa)} accent="#E85D22" sub="Meta ÷ Kiwify" />
+            <KPI label="CTR" value={formatPercentage(metrics.ctr)} accent="#FAE125" sub="Meta Ads" />
           </div>
         ) : null}
 
@@ -482,33 +446,27 @@ export default function MetaAdsPage() {
               <LineChart data={chartData}>
                 <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.03)" />
                 <XAxis dataKey="date" tick={{ fontSize: 10, fill: "rgba(255,255,255,0.2)" }} tickLine={false} axisLine={false} />
-                <YAxis tick={{ fontSize: 10, fill: "rgba(255,255,255,0.2)" }} tickLine={false} axisLine={false}
-                  tickFormatter={(v: number) => v >= 1000 ? `${(v / 1000).toFixed(0)}k` : String(v)} />
+                <YAxis tick={{ fontSize: 10, fill: "rgba(255,255,255,0.2)" }} tickLine={false} axisLine={false} tickFormatter={(v: number) => v >= 1000 ? `${(v / 1000).toFixed(0)}k` : String(v)} />
                 <Tooltip content={<ChartTooltip />} />
                 <Line type="monotone" dataKey="spend" stroke="#E85D22" strokeWidth={1.5} dot={false} name="investimento" />
+                <Line type="monotone" dataKey="faturamento" stroke="#00D861" strokeWidth={1.5} dot={false} name="faturamento" />
               </LineChart>
             </ResponsiveContainer>
             <div className="mt-2 flex gap-4">
               <span className="flex items-center gap-1.5 text-[10px] text-white/25">
                 <span className="h-px w-3 bg-[#E85D22]" /> Investimento
               </span>
-            </div>
+              <span className="flex items-center gap-1.5 text-[10px] text-white/25">
+                <span className="h-px w-3 bg-[#00D861]" /> Faturamento
+              </span>            </div>
           </div>
         )}
 
         {/* Filters + Table */}
         <div className="rounded-xl border border-white/[0.07] bg-white/[0.02] p-5 space-y-4">
           <h2 className="text-sm font-bold text-white">Análise detalhada</h2>
-          <Filters
-            filters={filters}
-            onChange={setFilters}
-            campaigns={apiData?.campaigns.map((c) => c.name) ?? []}
-          />
-          {isLoading ? (
-            <div className="h-40 animate-pulse rounded-lg bg-white/[0.04]" />
-          ) : (
-            <MetaTable rows={getTableRows()} />
-          )}
+          <Filters filters={filters} onChange={setFilters} campaigns={apiData?.campaigns.map((c) => c.name) ?? []} />
+          {isLoading ? <div className="h-40 animate-pulse rounded-lg bg-white/[0.04]" /> : <MetaTable rows={getTableRows()} />}
         </div>
       </div>
     </div>
