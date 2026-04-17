@@ -194,7 +194,10 @@ status: (d.status === "approved" ? "approved" : d.status === "refunded" ? "refun
 
   const filtered = useMemo(() => {
     const cutoff = new Date();
-    if (period !== "all") cutoff.setDate(cutoff.getDate() - parseInt(period));
+if (period !== "all") {
+  cutoff.setDate(cutoff.getDate() - parseInt(period));
+  cutoff.setHours(0, 0, 0, 0);
+}
 
     return clients
       .filter((c) => {

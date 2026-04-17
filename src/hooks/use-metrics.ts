@@ -186,19 +186,17 @@ export function useMetrics(options: UseMetricsOptions = {}): MetricsState & {
     try {
       const cutoff = new Date();
       cutoff.setDate(cutoff.getDate() - days);
-      const cutoffTs = Timestamp.fromDate(cutoff);
-
       const q = query(
-        collection(db, "webhook_events"),
-        where("workspaceId", "==", workspaceId),
-        where("timestamp", ">=", cutoffTs),
-        orderBy("timestamp", "desc")
-      );
+  collection(db, "webhook_events"),
+  where("workspaceId", "==", workspaceId)
+);
 
-      const snapshot = await getDocs(q);
-      const events = snapshot.docs.map((doc) =>
-        firestoreDocToEvent(doc.id, doc.data() as Record<string, unknown>)
-      );
+const snapshot = await getDocs(q);
+
+
+const events = snapshot.docs
+  .map((doc) => firestoreDocToEvent(doc.id, doc.data() as Record<string, unknown>))
+  .filter((e) => new Date(e.timestamp) >= cutoff);
 
       // If no events yet, fall back to mock
       if (events.length === 0) {
