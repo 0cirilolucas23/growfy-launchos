@@ -7,18 +7,14 @@ export const maxDuration = 300;
 
 function getAdminDb() {
   if (!getApps().length) {
+    const serviceAccount = JSON.parse(process.env.FIREBASE_ADMIN_SERVICE_ACCOUNT!);
     initializeApp({
-      credential: cert({
-        projectId: process.env.FIREBASE_ADMIN_PROJECT_ID,
-        clientEmail: process.env.FIREBASE_ADMIN_CLIENT_EMAIL,
-        privateKey: process.env.FIREBASE_ADMIN_PRIVATE_KEY?.replace(/\\n/g, "\n").replace(/^"|"$/g, ""),
-      }),
+      credential: cert(serviceAccount),
     });
-      // ✅ settings() apenas na primeira inicialização
-      getFirestore().settings({ ignoreUndefinedProperties: true });
-    }
-  return getFirestore();
+    getFirestore().settings({ ignoreUndefinedProperties: true });
   }
+  return getFirestore();
+}
 
   // ─────────────────────────────────────────────
   // GET — verifica quantos eventos já existem

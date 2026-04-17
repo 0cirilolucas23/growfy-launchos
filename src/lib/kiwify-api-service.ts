@@ -242,6 +242,15 @@ export async function fetchAllKiwifyOrders(
       try {
         const res = await fetchKiwifySalesByDateRange(start, end, nextToken);
         const orders = getOrdersArray(res);
+
+        // DEBUG — ver estrutura completa da paginação
+        if (i === chunks.length - 1) { // só no último chunk (mais recente)
+          console.log("📄 [Kiwify PAGINATION] keys:", Object.keys(res));
+          console.log("📄 [Kiwify PAGINATION] next_page_token:", res.next_page_token);
+          console.log("📄 [Kiwify PAGINATION] pagination:", JSON.stringify(res.pagination));
+          console.log("📄 [Kiwify PAGINATION] total orders nesse chunk:", orders.length);
+        }
+
         for (const order of orders) {
           const id = getOrderId(order);
           if (id && !seenIds.has(id)) {
@@ -264,8 +273,8 @@ export async function fetchAllKiwifyOrders(
 // Normalize
 // ─────────────────────────────────────────────
 export function normalizeKiwifyOrder(
-  
-  
+
+
   order: KiwifyOrder,
   workspaceId: string
 ): Record<string, unknown> {
