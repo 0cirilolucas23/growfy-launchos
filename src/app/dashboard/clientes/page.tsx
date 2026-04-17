@@ -182,7 +182,7 @@ status: (d.status === "approved" ? "approved" : d.status === "refunded" ? "refun
         utmContent: d.utmContent ?? "",
       };
     }).sort((a, b) => b.timestamp.getTime() - a.timestamp.getTime())
-  .filter((c) => c.customerName !== "" && c.amount > 0);
+  .filter((c) => c.amount > 0)
     setClients(data);
     setIsLoading(false);
   }).catch(() => setIsLoading(false));
