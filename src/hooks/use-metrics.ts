@@ -125,7 +125,7 @@ function firestoreDocToEvent(id: string, data: Record<string, unknown>): Webhook
     timestamp: data.timestamp instanceof Timestamp
       ? data.timestamp.toDate()
       : new Date(data.timestamp as string),
-    status: data.status as WebhookEvent["status"],
+    status: (data.status === "approved" ? "success" : data.status) as WebhookEvent["status"],
   };
 }
 

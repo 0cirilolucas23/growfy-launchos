@@ -190,16 +190,16 @@ export function aggregateRevenue(
   previousPeriodRevenue = 0
 ): RevenueMetrics {
   const purchases = events.filter(
-    (e) => e.type === "purchase" && e.status === "success"
-  );
+  (e) => e.type === "purchase" && (e.status === "success" || e.status === "approved" as unknown)
+);
   const refunds = events.filter(
     (e) => e.type === "refund" || e.status === "refunded"
   );
   const subscriptions = events.filter(
-    (e) =>
-      (e.type === "subscription_start" || e.type === "subscription_renewal") &&
-      e.status === "success"
-  );
+  (e) =>
+    (e.type === "subscription_start" || e.type === "subscription_renewal") &&
+    (e.status === "success" || e.status === "approved" as unknown)
+);
 
   const totalRevenue = purchases.reduce((sum, e) => sum + e.amount, 0);
   const recurringRevenue = subscriptions.reduce((sum, e) => sum + e.amount, 0);
