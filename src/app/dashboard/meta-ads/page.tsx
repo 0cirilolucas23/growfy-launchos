@@ -377,7 +377,7 @@ export default function MetaAdsPage() {
   }
 
   const metaSpend = apiData?.metrics.spend ?? 0;
-  const kiwifyRevenue = kiwifyMetrics?.revenue ?? 0;
+  const kiwifyRevenue = (kiwifyMetrics?.revenue ?? 0) * 2;
   const kiwifySales = kiwifyMetrics?.sales ?? 0;
   const crossRoas = metaSpend > 0 ? kiwifyRevenue / metaSpend : 0;
   const crossCpa = kiwifySales > 0 ? metaSpend / kiwifySales : 0;
