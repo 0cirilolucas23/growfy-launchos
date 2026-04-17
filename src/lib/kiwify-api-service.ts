@@ -212,10 +212,12 @@ function buildDateChunks(from: Date, to: Date, chunkDays = 30): Array<{ start: s
 async function fetchKiwifySalesByDateRange(
   startDate: string,
   endDate: string,
-  nextPageToken?: string
+  nextPageToken?: string,
+  page?: number
 ): Promise<KiwifyOrdersResponse> {
   const params: Record<string, string> = { start_date: startDate, end_date: endDate };
   if (nextPageToken) params.next_page_token = nextPageToken;
+  if (page && page > 1) params.page = String(page);
   return kiwifyFetch<KiwifyOrdersResponse>("/sales", params);
 }
 
@@ -238,33 +240,34 @@ export async function fetchAllKiwifyOrders(
     const { start, end } = chunks[i];
     onProgress?.(allOrders.length, `Buscando ${start} → ${end} (${i + 1}/${chunks.length})`);
     let nextToken: string | undefined;
-    do {
-      try {
-        const res = await fetchKiwifySalesByDateRange(start, end, nextToken);
-        const orders = getOrdersArray(res);
+    let pageNumber = 1;
+let hasMore = true;
 
-        // DEBUG — ver estrutura completa da paginação
-        if (i === chunks.length - 1) { // só no último chunk (mais recente)
-          console.log("📄 [Kiwify PAGINATION] keys:", Object.keys(res));
-          console.log("📄 [Kiwify PAGINATION] next_page_token:", res.next_page_token);
-          console.log("📄 [Kiwify PAGINATION] pagination:", JSON.stringify(res.pagination));
-          console.log("📄 [Kiwify PAGINATION] total orders nesse chunk:", orders.length);
-        }
-
-        for (const order of orders) {
-          const id = getOrderId(order);
-          if (id && !seenIds.has(id)) {
-            seenIds.add(id);
-            allOrders.push(order);
-          }
-        }
-        nextToken = res.next_page_token ?? res.pagination?.next_page_token ?? undefined;
-      } catch (err) {
-        console.warn(`[Kiwify] Erro no chunk ${start}→${end}:`, err);
-        nextToken = undefined;
+while (hasMore) {
+  try {
+    const res = await fetchKiwifySalesByDateRange(start, end, undefined, pageNumber);
+    const orders = getOrdersArray(res);
+    
+    for (const order of orders) {
+      const id = getOrderId(order);
+      if (id && !seenIds.has(id)) {
+        seenIds.add(id);
+        allOrders.push(order);
       }
-      await new Promise((r) => setTimeout(r, 700));
-    } while (nextToken);
+    }
+
+    const pagination = res.pagination;
+    const total = pagination?.count ?? 0;
+    const pageSize = pagination?.page_size ?? 10;
+    const totalPages = Math.ceil(total / pageSize);
+    hasMore = pageNumber < totalPages;
+    pageNumber++;
+  } catch (err) {
+    console.warn(`[Kiwify] Erro no chunk ${start}→${end} página ${pageNumber}:`, err);
+    hasMore = false;
+  }
+  await new Promise((r) => setTimeout(r, 700));
+}
   }
   return allOrders;
 }
