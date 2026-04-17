@@ -217,7 +217,7 @@ async function fetchKiwifySalesByDateRange(
 ): Promise<KiwifyOrdersResponse> {
   const params: Record<string, string> = { start_date: startDate, end_date: endDate };
   if (nextPageToken) params.next_page_token = nextPageToken;
-  if (page && page > 1) params.page = String(page);
+  if (page && page > 1) params.page_number = String(page);
   return kiwifyFetch<KiwifyOrdersResponse>("/sales", params);
 }
 
