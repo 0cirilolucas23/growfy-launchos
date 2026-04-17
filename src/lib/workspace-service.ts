@@ -100,7 +100,15 @@ function generateId(): string {
 /**
  * Busca todos os workspaces que o usuário tem acesso
  */
-export async function getUserWorkspaces(userId: string): Promise<Workspace[]> {
+export async function getUserWorkspaces(userId: string, userEmail?: string): Promise<Workspace[]> {
+  // @growfy.com.br vê todos os workspaces
+  if (userEmail?.endsWith("@growfy.com.br")) {
+    const snapshot = await getDocs(collection(db, "workspaces"));
+    return snapshot.docs.map((doc) =>
+      docToWorkspace(doc.id, doc.data() as Record<string, unknown>)
+    );
+  }
+
   const q = query(
     collection(db, "workspaces"),
     where("members", "array-contains", userId)

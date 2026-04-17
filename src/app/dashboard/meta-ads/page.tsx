@@ -17,7 +17,9 @@ import { cn } from "@/lib/utils";
 interface KiwifyMetrics {
   revenue: number;
   sales: number;
-  dailyRevenue: Record<string, number>; // "MM/DD" → valor
+  dailyRevenue: Record<string, number>;
+  byCampaign: Record<string, { revenue: number; sales: number }>;
+  byContent: Record<string, { revenue: number; sales: number }>;
 }
 
 async function fetchKiwifyMetrics(
@@ -37,6 +39,8 @@ async function fetchKiwifyMetrics(
   let revenue = 0;
   let sales = 0;
   const dailyRevenue: Record<string, number> = {};
+  const byCampaign: Record<string, { revenue: number; sales: number }> = {};
+  const byContent: Record<string, { revenue: number; sales: number }> = {};
 
   snapshot.forEach((doc) => {
     const data = doc.data();
@@ -46,23 +50,34 @@ async function fetchKiwifyMetrics(
     const ts: Date = data.timestamp instanceof Timestamp
       ? data.timestamp.toDate()
       : new Date(data.timestamp as string);
-
     if (ts < since || ts > until) return;
 
-    revenue += (data.amount as number) ?? 0;
+    const amt = (data.amount as number) ?? 0;
+    revenue += amt;
     sales += 1;
 
-    // Agrupa por dia no formato MM/DD (igual ao chartData do Meta)
     const dayKey = ts.toISOString().slice(5, 10).replace("-", "/");
-    dailyRevenue[dayKey] = (dailyRevenue[dayKey] ?? 0) + ((data.amount as number) ?? 0);
+    dailyRevenue[dayKey] = (dailyRevenue[dayKey] ?? 0) + amt;
+
+    // Agrupa por utmCampaign (nível campanha)
+    const campaign = (data.utmCampaign as string) || "";
+    if (campaign) {
+      byCampaign[campaign] = byCampaign[campaign] ?? { revenue: 0, sales: 0 };
+      byCampaign[campaign].revenue += amt * 2;
+      byCampaign[campaign].sales += 1;
+    }
+
+    // Agrupa por utmContent (nível criativo/ad)
+    const content = (data.utmContent as string) || "";
+    if (content) {
+      byContent[content] = byContent[content] ?? { revenue: 0, sales: 0 };
+      byContent[content].revenue += amt * 2;
+      byContent[content].sales += 1;
+    }
   });
 
-  return { revenue, sales, dailyRevenue };
-}
-
-// ─────────────────────────────────────────────
-// Date Range Picker
-// ─────────────────────────────────────────────
+  return { revenue, sales, dailyRevenue, byCampaign, byContent };
+};
 const PRESETS = [
   { label: "Hoje", value: "today" },
   { label: "7 dias", value: "7d" },
@@ -357,24 +372,50 @@ export default function MetaAdsPage() {
   }
 
   function getTableRows() {
-    if (!apiData) return [];
-    const search = filters.search.toLowerCase();
-    const minRoas = parseFloat(filters.minRoas) || 0;
-    const minSpend = parseFloat(filters.minSpend) || 0;
-    if (filters.level === "campaign") {
-      return apiData.campaigns.filter((r) => r.name.toLowerCase().includes(search)).filter((r) => r.roas >= minRoas && r.spend >= minSpend);
-    }
-    if (filters.level === "adset") {
-      return apiData.adsets
-        .filter((r) => r.name.toLowerCase().includes(search) || r.campaignName.toLowerCase().includes(search))
-        .filter((r) => r.roas >= minRoas && r.spend >= minSpend)
-        .map((r) => ({ ...r, subName: r.campaignName, hookRate: undefined }));
-    }
-    return apiData.ads
-      .filter((r) => r.name.toLowerCase().includes(search) || r.adsetName.toLowerCase().includes(search))
-      .filter((r) => r.roas >= minRoas && r.spend >= minSpend)
-      .map((r) => ({ ...r, subName: `${r.campaignName} → ${r.adsetName}` }));
+  if (!apiData) return [];
+  const search = filters.search.toLowerCase();
+  const minRoas = parseFloat(filters.minRoas) || 0;
+  const minSpend = parseFloat(filters.minSpend) || 0;
+
+  function enrichWithKiwify<T extends { name: string; spend: number; roas: number; purchases: number }>(
+    rows: T[],
+    kiwifyMap: Record<string, { revenue: number; sales: number }>
+  ) {
+    return rows.map((r) => {
+      // Tenta match exato, depois parcial
+      const kw = kiwifyMap[r.name]
+        ?? Object.entries(kiwifyMap).find(([k]) =>
+          r.name.toLowerCase().includes(k.toLowerCase()) ||
+          k.toLowerCase().includes(r.name.toLowerCase())
+        )?.[1]
+        ?? { revenue: 0, sales: 0 };
+
+      const realRoas = r.spend > 0 && kw.revenue > 0 ? kw.revenue / r.spend : r.roas;
+      return { ...r, roas: realRoas, purchases: kw.sales || r.purchases };
+    });
   }
+
+  if (filters.level === "campaign") {
+    const rows = apiData.campaigns
+      .filter((r) => r.name.toLowerCase().includes(search))
+      .filter((r) => r.roas >= minRoas && r.spend >= minSpend);
+    return enrichWithKiwify(rows, kiwifyMetrics?.byCampaign ?? {});
+  }
+
+  if (filters.level === "adset") {
+    const rows = apiData.adsets
+      .filter((r) => r.name.toLowerCase().includes(search) || r.campaignName.toLowerCase().includes(search))
+      .filter((r) => r.roas >= minRoas && r.spend >= minSpend)
+      .map((r) => ({ ...r, subName: r.campaignName, hookRate: undefined }));
+    return enrichWithKiwify(rows, kiwifyMetrics?.byCampaign ?? {});
+  }
+
+  const rows = apiData.ads
+    .filter((r) => r.name.toLowerCase().includes(search) || r.adsetName.toLowerCase().includes(search))
+    .filter((r) => r.roas >= minRoas && r.spend >= minSpend)
+    .map((r) => ({ ...r, subName: `${r.campaignName} → ${r.adsetName}` }));
+  return enrichWithKiwify(rows, kiwifyMetrics?.byContent ?? {});
+}
 
   const metaSpend = apiData?.metrics.spend ?? 0;
   const kiwifyRevenue = (kiwifyMetrics?.revenue ?? 0) * 2;
@@ -388,7 +429,7 @@ export default function MetaAdsPage() {
     return {
       ...d,
       date: dayKey,
-      faturamento: kiwifyMetrics?.dailyRevenue[dayKey] ?? 0,
+      faturamento: (kiwifyMetrics?.dailyRevenue[dayKey] ?? 0) * 2,
     };
   });
 

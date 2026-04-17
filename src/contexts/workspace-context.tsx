@@ -63,7 +63,7 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
 
     try {
       setIsLoading(true);
-      const list = await getUserWorkspaces(user.uid);
+      const list = await getUserWorkspaces(user.uid, user.email ?? undefined);
       setWorkspaces(list);
 
       // Restore last active workspace from sessionStorage
