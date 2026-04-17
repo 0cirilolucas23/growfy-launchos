@@ -8,6 +8,10 @@ import {
 import { cn } from "@/lib/utils";
 import { formatCurrency } from "@/lib/metrics-service";
 
+import { collection, query, where, getDocs, Timestamp } from "firebase/firestore";
+import { db } from "@/lib/firebase";
+import { useWorkspace } from "@/contexts/workspace-context";
+
 // ─────────────────────────────────────────────
 // Types
 // ─────────────────────────────────────────────
@@ -37,45 +41,7 @@ interface Client {
 // Mock data from Firestore (replace with real query)
 // ─────────────────────────────────────────────
 
-function generateMockClients(count = 80): Client[] {
-  const platforms: Exclude<Platform, "all">[] = ["hotmart", "kiwify", "eduzz"];
-  const statuses: Exclude<Status, "all">[] = ["approved", "approved", "approved", "refunded", "pending"];
-  const products = ["LaunchOS Academy", "Mentoria VIP 90 dias", "Pack Templates Pro"];
-  const names = [
-    "Ana Silva", "Carlos Mendes", "Beatriz Santos", "Diego Almeida",
-    "Fernanda Costa", "Gabriel Lima", "Helena Rocha", "Igor Ferreira",
-    "Julia Martins", "Kaio Nascimento", "Larissa Oliveira", "Marcos Paulo",
-    "Natália Souza", "Otávio Carvalho", "Patricia Gomes", "Rafael Torres",
-  ];
-  const campaigns = ["CPM_Prospeccao", "CPC_Retargeting", "Advantage+_Vendas", "Search_Branded"];
-  const mediums = ["cpc", "display", "video", "social"];
 
-  return Array.from({ length: count }, (_, i) => {
-    const name = names[i % names.length];
-    const [first, last] = name.split(" ");
-    const daysAgo = Math.floor(Math.random() * 60);
-    const date = new Date();
-    date.setDate(date.getDate() - daysAgo);
-    const platform = platforms[i % platforms.length];
-    const status = statuses[Math.floor(Math.random() * statuses.length)];
-
-    return {
-      id: `cli_${Math.random().toString(36).slice(2, 10)}`,
-      customerName: name,
-      customerEmail: `${first.toLowerCase()}.${last.toLowerCase()}${i}@email.com`,
-      customerPhone: `+55 11 9${String(Math.floor(Math.random() * 90000000 + 10000000))}`,
-      productName: products[i % products.length],
-      platform,
-      status,
-      amount: Math.round((Math.random() * 1500 + 97) * 100) / 100,
-      timestamp: date,
-      utmSource: "facebook",
-      utmMedium: mediums[Math.floor(Math.random() * mediums.length)],
-      utmCampaign: campaigns[Math.floor(Math.random() * campaigns.length)],
-      utmContent: `VSL_${Math.floor(Math.random() * 5) + 1}`,
-    };
-  }).sort((a, b) => b.timestamp.getTime() - a.timestamp.getTime());
-}
 
 // ─────────────────────────────────────────────
 // Helpers
@@ -186,14 +152,40 @@ export default function ClientesPage() {
   const [sortDir, setSortDir] = useState<SortDir>("desc");
   const [page, setPage] = useState(1);
   const PER_PAGE = 20;
+  const { activeWorkspace } = useWorkspace();
+const workspaceId = activeWorkspace?.id ?? null;
 
-  useEffect(() => {
-    // TODO: replace with Firestore query
-    setTimeout(() => {
-      setClients(generateMockClients(80));
-      setIsLoading(false);
-    }, 600);
-  }, []);
+useEffect(() => {
+  if (!workspaceId) return;
+  setIsLoading(true);
+  const q = query(
+    collection(db, "webhook_events"),
+    where("workspaceId", "==", workspaceId),
+    where("source", "==", "kiwify")
+  );
+  getDocs(q).then((snap) => {
+    const data: Client[] = snap.docs.map((doc) => {
+      const d = doc.data();
+      return {
+        id: doc.id,
+        customerName: d.customerName ?? "",
+        customerEmail: d.customerEmail ?? "",
+        customerPhone: d.customerPhone ?? "",
+        productName: d.productName ?? "",
+        platform: (d.source ?? "kiwify") as "hotmart" | "kiwify" | "eduzz",
+status: (d.status === "approved" ? "approved" : d.status === "refunded" ? "refunded" : "pending") as "approved" | "refunded" | "cancelled" | "pending",
+        amount: d.amount ?? 0,
+        timestamp: d.timestamp instanceof Timestamp ? d.timestamp.toDate() : new Date(d.timestamp),
+        utmSource: d.utmSource ?? "",
+        utmMedium: d.utmMedium ?? "",
+        utmCampaign: d.utmCampaign ?? "",
+        utmContent: d.utmContent ?? "",
+      };
+    }).sort((a, b) => b.timestamp.getTime() - a.timestamp.getTime());
+    setClients(data);
+    setIsLoading(false);
+  }).catch(() => setIsLoading(false));
+}, [workspaceId]);
 
   function handleSort(key: SortKey) {
     if (sortKey === key) setSortDir((d) => d === "asc" ? "desc" : "asc");
