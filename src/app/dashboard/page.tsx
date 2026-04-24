@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import {
   AreaChart, Area, BarChart, Bar,
   XAxis, YAxis, CartesianGrid, Tooltip,
@@ -101,6 +101,20 @@ export default function DashboardPage() {
   const [dateRange, setDateRange] = useState<DateRange>("30d");
   const { activeWorkspace } = useWorkspace();
 
+  const [metaLeads, setMetaLeads] = useState(0);
+
+  useEffect(() => {
+    if (!activeWorkspace?.id) return;
+    const days = dateRange === "7d" ? 7 : dateRange === "14d" ? 14 : dateRange === "30d" ? 30 : 90;
+    const until = new Date().toISOString().split("T")[0];
+    const since = new Date(Date.now() - days * 86400000).toISOString().split("T")[0];
+    const params = new URLSearchParams({ since, until, workspaceId: activeWorkspace.id });
+    fetch(`/api/meta-ads?${params}`)
+      .then((r) => r.json())
+      .then((data) => { if (data?.metrics?.leads) setMetaLeads(data.metrics.leads); })
+      .catch(() => { });
+  }, [activeWorkspace?.id, dateRange]);
+
   const { revenue, conversions, ads, chartData, topProducts, isLoading, isRefreshing, isLive, lastUpdated, refresh, setDateRange: applyRange } = useMetrics({
     dateRange,
     workspaceId: activeWorkspace?.id ?? null,
@@ -114,7 +128,7 @@ export default function DashboardPage() {
 
   const kpis: KPIProps[] = [
     { label: "Receita Líquida", value: formatCurrency(revenue.netRevenue), change: revenue.growthRate, accentColor: "#00D861", sparkData: revSpark },
-    { label: "Leads Gerados", value: formatNumber(conversions.leads), change: 12.4, accentColor: "#5050F2", sparkData: leadSpark },
+    { label: "Leads Gerados", value: formatNumber(metaLeads), change: 12.4, accentColor: "#5050F2", sparkData: leadSpark },
     { label: "Conversões", value: formatPercentage(conversions.overallConversionRate), change: -2.1, accentColor: "#FAE125", sparkData: convSpark },
     { label: "ROAS", value: `${ads.roas.toFixed(2)}x`, change: 8.7, accentColor: "#00D861" },
     { label: "Custo por Lead", value: formatCurrency(conversions.costPerLead), change: -5.3, accentColor: "#E85D22" },
@@ -189,7 +203,7 @@ export default function DashboardPage() {
                   </defs>
                   <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.03)" />
                   <XAxis dataKey="date" tick={{ fontSize: 10, fill: "rgba(255,255,255,0.2)" }} tickLine={false} axisLine={false} interval="preserveStartEnd" />
-                  <YAxis yAxisId="r" orientation="left" tick={{ fontSize: 10, fill: "rgba(255,255,255,0.2)" }} tickLine={false} axisLine={false} tickFormatter={(v: number) => v >= 1000 ? `${(v/1000).toFixed(0)}k` : String(v)} />
+                  <YAxis yAxisId="r" orientation="left" tick={{ fontSize: 10, fill: "rgba(255,255,255,0.2)" }} tickLine={false} axisLine={false} tickFormatter={(v: number) => v >= 1000 ? `${(v / 1000).toFixed(0)}k` : String(v)} />
                   <YAxis yAxisId="l" orientation="right" tick={{ fontSize: 10, fill: "rgba(255,255,255,0.2)" }} tickLine={false} axisLine={false} />
                   <Tooltip content={<ChartTooltip />} />
                   <Area yAxisId="r" type="monotone" dataKey="revenue" stroke="#00D861" strokeWidth={1.5} fill="url(#gR)" name="revenue" />
@@ -228,25 +242,25 @@ export default function DashboardPage() {
               : topProducts.length === 0
                 ? <p className="py-8 text-center text-xs text-white/20">Nenhum produto ainda — aguardando eventos reais</p>
                 : <div className="space-y-3">
-                    {topProducts.map((p, i) => {
-                      const pct = (p.revenue / (topProducts[0]?.revenue ?? 1)) * 100;
-                      return (
-                        <div key={p.id} className="space-y-1.5">
-                          <div className="flex items-center justify-between">
-                            <div className="flex items-center gap-2 min-w-0">
-                              <span className="text-[10px] font-bold text-white/20 w-3 text-right shrink-0">{i + 1}</span>
-                              <span className="text-xs font-semibold text-white/80 truncate">{p.name}</span>
-                              <span className="shrink-0 rounded-full border border-white/[0.08] px-1.5 py-0.5 text-[9px] text-white/25 uppercase">{p.source}</span>
-                            </div>
-                            <span className="text-xs font-bold text-white shrink-0 ml-2">{formatCurrency(p.revenue)}</span>
+                  {topProducts.map((p, i) => {
+                    const pct = (p.revenue / (topProducts[0]?.revenue ?? 1)) * 100;
+                    return (
+                      <div key={p.id} className="space-y-1.5">
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center gap-2 min-w-0">
+                            <span className="text-[10px] font-bold text-white/20 w-3 text-right shrink-0">{i + 1}</span>
+                            <span className="text-xs font-semibold text-white/80 truncate">{p.name}</span>
+                            <span className="shrink-0 rounded-full border border-white/[0.08] px-1.5 py-0.5 text-[9px] text-white/25 uppercase">{p.source}</span>
                           </div>
-                          <div className="h-px overflow-hidden rounded-full bg-white/[0.06]">
-                            <div className="h-full bg-white/20 transition-all duration-700" style={{ width: `${pct}%` }} />
-                          </div>
+                          <span className="text-xs font-bold text-white shrink-0 ml-2">{formatCurrency(p.revenue)}</span>
                         </div>
-                      );
-                    })}
-                  </div>
+                        <div className="h-px overflow-hidden rounded-full bg-white/[0.06]">
+                          <div className="h-full bg-white/20 transition-all duration-700" style={{ width: `${pct}%` }} />
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
             }
           </div>
 

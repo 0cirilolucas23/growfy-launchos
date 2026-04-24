@@ -71,6 +71,8 @@ function buildMetrics(
   days: number
 ): Omit<MetricsState, "isLoading" | "isRefreshing" | "isLive" | "error" | "lastUpdated"> {
   const revenue = aggregateRevenue(events);
+  revenue.netRevenue = revenue.netRevenue * 2;
+revenue.totalRevenue = revenue.totalRevenue * 2;
   const conversions = calculateConversionMetrics(events, {
     spend: DEFAULT_AD_SPEND,
     clicks: Math.round(DEFAULT_AD_SPEND / 2.5),
