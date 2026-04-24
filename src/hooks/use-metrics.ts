@@ -68,22 +68,44 @@ const DATE_RANGE_DAYS: Record<DateRange, number> = {
 
 function buildMetrics(
   events: WebhookEvent[],
-  days: number
+  days: number,
+  metaSpend = 0,
+  metaLeads = 0,
+  metaClicks = 0,
+  metaImpressions = 0,
+  metaCtr = 0,
+  metaFrequency = 0,
 ): Omit<MetricsState, "isLoading" | "isRefreshing" | "isLive" | "error" | "lastUpdated"> {
   const revenue = aggregateRevenue(events);
   revenue.netRevenue = revenue.netRevenue * 2;
-revenue.totalRevenue = revenue.totalRevenue * 2;
+  revenue.totalRevenue = revenue.totalRevenue * 2;
+
+  const spend = metaSpend > 0 ? metaSpend : DEFAULT_AD_SPEND;
+
   const conversions = calculateConversionMetrics(events, {
-    spend: DEFAULT_AD_SPEND,
-    clicks: Math.round(DEFAULT_AD_SPEND / 2.5),
+    spend,
+    clicks: metaClicks > 0 ? metaClicks : Math.round(spend / 2.5),
   });
+
+  // Sobrescreve leads com dados reais do Meta
+  if (metaLeads > 0) conversions.leads = metaLeads;
+
+  // Recalcula custo por lead com dados reais
+  conversions.costPerLead = metaLeads > 0 ? spend / metaLeads : 0;
+
+  // Conversões: só mostra se tiver leads reais
+  conversions.overallConversionRate = metaLeads > 0
+    ? (conversions.customers / metaLeads) * 100
+    : 0;
+
   const ads = calculateAdMetrics(
-    DEFAULT_AD_SPEND,
-    Math.round(DEFAULT_AD_SPEND * 80),
-    Math.round(DEFAULT_AD_SPEND / 2.5),
+    spend,
+    metaImpressions > 0 ? metaImpressions : Math.round(spend * 80),
+    metaClicks > 0 ? metaClicks : Math.round(spend / 2.5),
     revenue.netRevenue,
-    2.3
+    metaFrequency > 0 ? metaFrequency : 2.3
   );
+
   const chartData = buildChartData(events, days);
 
   const productMap = new Map<string, ProductPerformance>();
@@ -213,9 +235,26 @@ const events = snapshot.docs
         return;
       }
 
+      // Busca dados reais do Meta
+      let metaSpend = 0, metaLeads = 0, metaClicks = 0, metaImpressions = 0, metaFrequency = 0;
+      try {
+        const until = new Date().toISOString().split("T")[0];
+        const since = new Date(Date.now() - days * 86400000).toISOString().split("T")[0];
+        const params = new URLSearchParams({ since, until, ...(workspaceId ? { workspaceId } : {}) });
+        const metaRes = await fetch(`/api/meta-ads?${params}`);
+        const metaData = await metaRes.json();
+        if (metaData?.metrics) {
+          metaSpend = metaData.metrics.spend ?? 0;
+          metaLeads = metaData.metrics.leads ?? 0;
+          metaClicks = metaData.metrics.clicks ?? 0;
+          metaImpressions = metaData.metrics.impressions ?? 0;
+          metaFrequency = metaData.metrics.frequency ?? 0;
+        }
+      } catch { /* sem Meta, usa defaults */ }
+
       setState((prev) => ({
         ...prev,
-        ...buildMetrics(events, days),
+        ...buildMetrics(events, days, metaSpend, metaLeads, metaClicks, metaImpressions, 0, metaFrequency),
         isLoading: false,
         isRefreshing: false,
         isLive: true,
