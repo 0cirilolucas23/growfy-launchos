@@ -32,7 +32,7 @@ const sections = [
     label: "Canais",
     items: [
       { href: "/dashboard/meta-ads", label: "Meta Ads", icon: MetaIcon, adminOnly: false },
-      { href: "/dashboard/google-ads", label: "Google Ads", icon: Search, adminOnly: false },
+      { href: "/dashboard/google-ads", label: "Google Ads", icon: Search, adminOnly: true },
     ],
   },
   {

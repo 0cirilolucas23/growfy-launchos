@@ -128,10 +128,10 @@ export default function DashboardPage() {
 
   const kpis: KPIProps[] = [
     { label: "Receita Líquida", value: formatCurrency(revenue.netRevenue), change: revenue.growthRate, accentColor: "#00D861", sparkData: revSpark },
-    { label: "Leads Gerados", value: formatNumber(metaLeads), change: 12.4, accentColor: "#5050F2", sparkData: leadSpark },
-    { label: "Conversões", value: formatPercentage(conversions.overallConversionRate), change: -2.1, accentColor: "#FAE125", sparkData: convSpark },
+    { label: "Leads Gerados", value: metaLeads > 0 ? formatNumber(metaLeads) : "—", change: 12.4, accentColor: "#5050F2", sparkData: leadSpark },
+    { label: "Conversões", value: conversions.overallConversionRate > 0 ? formatPercentage(conversions.overallConversionRate) : "—", change: -2.1, accentColor: "#FAE125", sparkData: convSpark },
     { label: "ROAS", value: `${ads.roas.toFixed(2)}x`, change: 8.7, accentColor: "#00D861" },
-    { label: "Custo por Lead", value: formatCurrency(conversions.costPerLead), change: -5.3, accentColor: "#E85D22" },
+    { label: "Custo por Lead", value: metaLeads > 0 ? formatCurrency(conversions.costPerLead) : "—", change: -5.3, accentColor: "#E85D22" },
     { label: "CTR", value: formatPercentage(ads.ctr), change: 1.8, accentColor: "#5050F2" },
   ];
 
