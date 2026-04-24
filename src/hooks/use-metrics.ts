@@ -200,10 +200,16 @@ const events = snapshot.docs
   .map((doc) => firestoreDocToEvent(doc.id, doc.data() as Record<string, unknown>))
   .filter((e) => new Date(e.timestamp) >= cutoff);
 
-      // If no events yet, fall back to mock
       if (events.length === 0) {
-        console.info("[useMetrics] Nenhum evento no Firestore — usando mock");
-        loadMockData();
+        setState((prev) => ({
+          ...prev,
+          ...EMPTY_METRICS,
+          isLoading: false,
+          isRefreshing: false,
+          isLive: false,
+          lastUpdated: new Date(),
+          error: null,
+        }));
         return;
       }
 
@@ -218,7 +224,15 @@ const events = snapshot.docs
       }));
     } catch (err) {
       console.error("[useMetrics] Firestore error:", err);
-      loadMockData();
+      setState((prev) => ({
+        ...prev,
+        ...EMPTY_METRICS,
+        isLoading: false,
+        isRefreshing: false,
+        isLive: false,
+        error: "Erro ao carregar dados",
+        lastUpdated: new Date(),
+      }));
     }
   }, [days, workspaceId, loadMockData]);
 

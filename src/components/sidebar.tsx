@@ -47,7 +47,7 @@ const sections = [
     label: "Sistema",
     items: [
       { href: "/dashboard/configuracoes", label: "Configurações", icon: Settings, adminOnly: true },
-      { href: "/dashboard/webhooks", label: "Webhooks", icon: Webhook, adminOnly: true },
+      { href: "/dashboard/webhooks", label: "Webhooks", icon: Webhook, adminOnly: false },
       { href: "/dashboard/notificacoes", label: "Notificações", icon: Bell, adminOnly: true },
       { href: "/dashboard/docs", label: "Documentação", icon: FileText, adminOnly: true },
       { href: "/dashboard/importar", label: "Importar dados", icon: Download, adminOnly: true },
