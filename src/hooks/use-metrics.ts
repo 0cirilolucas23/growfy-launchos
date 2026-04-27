@@ -209,7 +209,8 @@ export function useMetrics(options: UseMetricsOptions = {}): MetricsState & {
 
     try {
       const cutoff = new Date();
-      cutoff.setDate(cutoff.getDate() - days);
+cutoff.setDate(cutoff.getDate() - days);
+cutoff.setHours(0, 0, 0, 0);
       const q = query(
   collection(db, "webhook_events"),
   where("workspaceId", "==", workspaceId)
