@@ -209,19 +209,19 @@ export function useMetrics(options: UseMetricsOptions = {}): MetricsState & {
 
     try {
       const cutoff = new Date();
-cutoff.setDate(cutoff.getDate() - days);
-cutoff.setHours(0, 0, 0, 0);
+      cutoff.setDate(cutoff.getDate() - days);
+      cutoff.setHours(0, 0, 0, 0);
       const q = query(
-  collection(db, "webhook_events"),
-  where("workspaceId", "==", workspaceId)
-);
+        collection(db, "webhook_events"),
+        where("workspaceId", "==", workspaceId)
+      );
 
-const snapshot = await getDocs(q);
+      const snapshot = await getDocs(q);
 
 
-const events = snapshot.docs
-  .map((doc) => firestoreDocToEvent(doc.id, doc.data() as Record<string, unknown>))
-  .filter((e) => new Date(e.timestamp) >= cutoff);
+      const events = snapshot.docs
+        .map((doc) => firestoreDocToEvent(doc.id, doc.data() as Record<string, unknown>))
+        .filter((e) => new Date(e.timestamp) >= cutoff);
 
       if (events.length === 0) {
         setState((prev) => ({
