@@ -12,6 +12,7 @@ import { useMetrics, DateRange } from "@/hooks/use-metrics";
 import { useWorkspace } from "@/contexts/workspace-context";
 import { formatCurrency, formatPercentage, formatNumber } from "@/lib/metrics-service";
 import { cn } from "@/lib/utils";
+import { Calendar, ChevronDown } from "lucide-react";
 
 // ─── Sparkline ───
 function Sparkline({ data, color }: { data: number[]; color: string }) {
@@ -59,15 +60,77 @@ function KPICard({ label, value, change, accentColor, sparkData, isLoading }: KP
 
 // ─── Date Range ───
 function DateRangeSelector({ value, onChange }: { value: DateRange; onChange: (r: DateRange) => void }) {
+  const [showCustom, setShowCustom] = useState(false);
+  const [customSince, setCustomSince] = useState("");
+  const [customUntil, setCustomUntil] = useState("");
+  const dropdownRef = React.useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    function handleClick(e: MouseEvent) {
+      if (dropdownRef.current && !dropdownRef.current.contains(e.target as Node)) {
+        setShowCustom(false);
+      }
+    }
+    document.addEventListener("mousedown", handleClick);
+    return () => document.removeEventListener("mousedown", handleClick);
+  }, []);
+
+  function applyCustom() {
+    if (customSince && customUntil) {
+      setShowCustom(false);
+      onChange("custom" as DateRange);
+    }
+  }
+
   return (
-    <div className="flex rounded-lg border border-white/[0.07] bg-white/[0.03] p-0.5">
-      {(["7d", "14d", "30d", "90d"] as DateRange[]).map((r) => (
-        <button key={r} onClick={() => onChange(r)}
-          className={cn("rounded-md px-2.5 py-1 text-[11px] font-semibold transition-all",
-            value === r ? "bg-white text-[#08080A]" : "text-white/30 hover:text-white/60")}>
-          {r}
+    <div className="flex items-center gap-1 flex-wrap">
+      <div className="flex rounded-lg border border-white/[0.07] bg-white/[0.03] p-0.5">
+        {(["7d", "14d", "30d", "90d"] as DateRange[]).map((r) => (
+          <button key={r} onClick={() => onChange(r)}
+            className={cn("rounded-md px-2.5 py-1 text-[11px] font-semibold transition-all",
+              value === r ? "bg-white text-[#08080A]" : "text-white/30 hover:text-white/60")}>
+            {r}
+          </button>
+        ))}
+      </div>
+      <div className="relative" ref={dropdownRef}>
+        <button
+          onClick={() => setShowCustom((v) => !v)}
+          className={cn(
+            "flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-[11px] font-semibold transition-all border",
+            value === "custom" as DateRange
+              ? "bg-white text-[#08080A] border-white"
+              : "border-white/[0.07] bg-white/[0.03] text-white/40 hover:text-white/70"
+          )}>
+          <Calendar className="h-3 w-3" />
+          {value === "custom" as DateRange && customSince && customUntil
+            ? `${customSince.slice(5).replace("-", "/")} → ${customUntil.slice(5).replace("-", "/")}`
+            : "Personalizado"}
+          <ChevronDown className={cn("h-3 w-3 transition-transform", showCustom && "rotate-180")} />
         </button>
-      ))}
+        {showCustom && (
+          <div className="absolute left-0 top-full mt-1.5 z-50 rounded-xl border border-white/[0.10] bg-[#0D0D10] p-4 shadow-2xl">
+            <div className="flex gap-4">
+              <div className="space-y-2">
+                <label className="block text-[10px] font-bold uppercase tracking-wider text-white/30">De</label>
+                <input type="date" value={customSince} onChange={(e) => setCustomSince(e.target.value)}
+                  className="rounded-lg border border-white/[0.08] bg-white/[0.04] px-3 py-2 text-xs text-white outline-none focus:border-white/20 [color-scheme:dark]" />
+              </div>
+              <div className="flex items-end pb-2"><span className="text-white/20 text-sm">→</span></div>
+              <div className="space-y-2">
+                <label className="block text-[10px] font-bold uppercase tracking-wider text-white/30">Até</label>
+                <input type="date" value={customUntil} onChange={(e) => setCustomUntil(e.target.value)}
+                  min={customSince}
+                  className="rounded-lg border border-white/[0.08] bg-white/[0.04] px-3 py-2 text-xs text-white outline-none focus:border-white/20 [color-scheme:dark]" />
+              </div>
+            </div>
+            <button onClick={applyCustom} disabled={!customSince || !customUntil}
+              className="mt-3 w-full rounded-lg bg-white py-2 text-[11px] font-bold text-[#08080A] hover:bg-white/90 disabled:opacity-40 transition-all">
+              Aplicar período
+            </button>
+          </div>
+        )}
+      </div>
     </div>
   );
 }

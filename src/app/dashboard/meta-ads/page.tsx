@@ -98,6 +98,7 @@ function getPresetDates(preset: string): MetaDateRange {
     case "90d": since.setDate(since.getDate() - 90); break;
     default: since.setDate(since.getDate() - 30);
   }
+  since.setHours(0, 0, 0, 0); // ← adicione esta linha
   return {
     since: since.toISOString().split("T")[0],
     until: until.toISOString().split("T")[0],
