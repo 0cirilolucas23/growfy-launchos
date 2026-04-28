@@ -372,50 +372,50 @@ export default function MetaAdsPage() {
   }
 
   function getTableRows() {
-  if (!apiData) return [];
-  const search = filters.search.toLowerCase();
-  const minRoas = parseFloat(filters.minRoas) || 0;
-  const minSpend = parseFloat(filters.minSpend) || 0;
+    if (!apiData) return [];
+    const search = filters.search.toLowerCase();
+    const minRoas = parseFloat(filters.minRoas) || 0;
+    const minSpend = parseFloat(filters.minSpend) || 0;
 
-  function enrichWithKiwify<T extends { name: string; spend: number; roas: number; purchases: number }>(
-    rows: T[],
-    kiwifyMap: Record<string, { revenue: number; sales: number }>
-  ) {
-    return rows.map((r) => {
-      // Tenta match exato, depois parcial
-      const kw = kiwifyMap[r.name]
-        ?? Object.entries(kiwifyMap).find(([k]) =>
-          r.name.toLowerCase().includes(k.toLowerCase()) ||
-          k.toLowerCase().includes(r.name.toLowerCase())
-        )?.[1]
-        ?? { revenue: 0, sales: 0 };
+    function enrichWithKiwify<T extends { name: string; spend: number; roas: number; purchases: number }>(
+      rows: T[],
+      kiwifyMap: Record<string, { revenue: number; sales: number }>
+    ) {
+      return rows.map((r) => {
+        // Tenta match exato, depois parcial
+        const kw = kiwifyMap[r.name]
+          ?? Object.entries(kiwifyMap).find(([k]) =>
+            r.name.toLowerCase().includes(k.toLowerCase()) ||
+            k.toLowerCase().includes(r.name.toLowerCase())
+          )?.[1]
+          ?? { revenue: 0, sales: 0 };
 
-      const realRoas = r.spend > 0 && kw.revenue > 0 ? kw.revenue / r.spend : r.roas;
-      return { ...r, roas: realRoas, purchases: kw.sales || r.purchases };
-    });
-  }
+        const realRoas = r.spend > 0 && kw.revenue > 0 ? kw.revenue / r.spend : r.roas;
+        return { ...r, roas: realRoas, purchases: kw.sales || r.purchases };
+      });
+    }
 
-  if (filters.level === "campaign") {
-    const rows = apiData.campaigns
-      .filter((r) => r.name.toLowerCase().includes(search))
-      .filter((r) => r.roas >= minRoas && r.spend >= minSpend);
-    return enrichWithKiwify(rows, kiwifyMetrics?.byCampaign ?? {});
-  }
+    if (filters.level === "campaign") {
+      const rows = apiData.campaigns
+        .filter((r) => r.name.toLowerCase().includes(search))
+        .filter((r) => r.roas >= minRoas && r.spend >= minSpend);
+      return enrichWithKiwify(rows, kiwifyMetrics?.byCampaign ?? {});
+    }
 
-  if (filters.level === "adset") {
-    const rows = apiData.adsets
-      .filter((r) => r.name.toLowerCase().includes(search) || r.campaignName.toLowerCase().includes(search))
+    if (filters.level === "adset") {
+      const rows = apiData.adsets
+        .filter((r) => r.name.toLowerCase().includes(search) || r.campaignName.toLowerCase().includes(search))
+        .filter((r) => r.roas >= minRoas && r.spend >= minSpend)
+        .map((r) => ({ ...r, subName: r.campaignName, hookRate: undefined }));
+      return enrichWithKiwify(rows, kiwifyMetrics?.byCampaign ?? {});
+    }
+
+    const rows = apiData.ads
+      .filter((r) => r.name.toLowerCase().includes(search) || r.adsetName.toLowerCase().includes(search))
       .filter((r) => r.roas >= minRoas && r.spend >= minSpend)
-      .map((r) => ({ ...r, subName: r.campaignName, hookRate: undefined }));
-    return enrichWithKiwify(rows, kiwifyMetrics?.byCampaign ?? {});
+      .map((r) => ({ ...r, subName: `${r.campaignName} → ${r.adsetName}` }));
+    return enrichWithKiwify(rows, kiwifyMetrics?.byContent ?? {});
   }
-
-  const rows = apiData.ads
-    .filter((r) => r.name.toLowerCase().includes(search) || r.adsetName.toLowerCase().includes(search))
-    .filter((r) => r.roas >= minRoas && r.spend >= minSpend)
-    .map((r) => ({ ...r, subName: `${r.campaignName} → ${r.adsetName}` }));
-  return enrichWithKiwify(rows, kiwifyMetrics?.byContent ?? {});
-}
 
   const metaSpend = apiData?.metrics.spend ?? 0;
   const kiwifyRevenue = (kiwifyMetrics?.revenue ?? 0) * 2;
@@ -470,12 +470,18 @@ export default function MetaAdsPage() {
         ) : metrics ? (
           <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
             <KPI label="Investimento" value={formatCurrency(metaSpend)} accent="#E85D22" sub="Meta Ads" />
-            <KPI label="Faturamento" value={formatCurrency(kiwifyRevenue)} accent="#00D861" sub={kiwifyMetrics ? "Kiwify" : "Sem dados Kiwify"} />
-            <KPI label="Vendas" value={formatNumber(kiwifySales)} accent="#5050F2" sub={kiwifyMetrics ? "Kiwify" : "Sem dados Kiwify"} />
-            <KPI label="Leads" value={formatNumber(metrics.leads)} accent="#5050F2" sub="Meta Ads" />
+            <KPI label="Faturamento" value={formatCurrency(kiwifyRevenue)} accent="#00D861" sub="Kiwify" />
+            <KPI label="Vendas" value={formatNumber(kiwifySales)} accent="#5050F2" sub="Kiwify" />
+            <KPI label="Sessões" value={formatNumber(metrics.landingPageViews)} accent="#FAE125" sub="Meta Ads" />
             <KPI label="ROAS" value={`${crossRoas.toFixed(2)}x`} accent="#00D861" sub="Kiwify ÷ Meta" />
             <KPI label="CPA" value={formatCurrency(crossCpa)} accent="#E85D22" sub="Meta ÷ Kiwify" />
-            <KPI label="CTR" value={formatPercentage(metrics.ctr)} accent="#FAE125" sub="Meta Ads" />
+            <KPI label="Custo por Sessão" value={formatCurrency(metrics.costPerLandingPageView)} accent="#FAE125" sub="Meta Ads" />
+            <KPI
+              label="Taxa de Conversão"
+              value={metrics.landingPageViews > 0 ? formatPercentage((kiwifySales / metrics.landingPageViews) * 100) : "—"}
+              accent="#00D861"
+              sub="Vendas ÷ Sessões"
+            />
           </div>
         ) : null}
 

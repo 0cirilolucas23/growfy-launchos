@@ -40,6 +40,8 @@ export interface MetaAdsMetrics {
   purchaseValue: number;
   roas: number;
   hookRate: number;
+  landingPageViews: number;
+  costPerLandingPageView: number;
 }
 
 export interface MetaCampaignRow {
@@ -154,6 +156,7 @@ function getActionValue(
 function parseMetrics(insights: MetaInsight[]): MetaAdsMetrics {
   let spend = 0, impressions = 0, clicks = 0, reach = 0;
   let leads = 0, purchases = 0, purchaseValue = 0, video3s = 0;
+  let landingPageViews = 0;
 
   for (const i of insights) {
     spend += parseFloat(i.spend ?? "0");
@@ -163,6 +166,7 @@ function parseMetrics(insights: MetaInsight[]): MetaAdsMetrics {
     leads += getActionValue(i.actions, "lead");
     purchases += getActionValue(i.actions, "purchase");
     purchaseValue += getActionValue(i.actions, "purchase_value");
+    landingPageViews += getActionValue(i.actions, "landing_page_view");
     video3s += parseFloat(
       i.video_30_sec_watched_actions?.[0]?.value ??
       i.video_p25_watched_actions?.[0]?.value ?? "0"
@@ -180,6 +184,8 @@ function parseMetrics(insights: MetaInsight[]): MetaAdsMetrics {
     leads, purchases, purchaseValue,
     roas: purchaseValue / safeSpend,
     hookRate: (video3s / safeImpressions) * 100,
+    landingPageViews,
+    costPerLandingPageView: landingPageViews > 0 ? spend / landingPageViews : 0,
   };
 }
 

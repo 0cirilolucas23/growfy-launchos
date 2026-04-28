@@ -102,6 +102,8 @@ export default function DashboardPage() {
   const { activeWorkspace } = useWorkspace();
 
   const [metaLeads, setMetaLeads] = useState(0);
+  const [metaSessions, setMetaSessions] = useState(0);
+  const [metaSpendDash, setMetaSpendDash] = useState(0);
 
   useEffect(() => {
     if (!activeWorkspace?.id) return;
@@ -111,7 +113,11 @@ export default function DashboardPage() {
     const params = new URLSearchParams({ since, until, workspaceId: activeWorkspace.id });
     fetch(`/api/meta-ads?${params}`)
       .then((r) => r.json())
-      .then((data) => { if (data?.metrics?.leads) setMetaLeads(data.metrics.leads); })
+      .then((data) => {
+        if (data?.metrics?.leads) setMetaLeads(data.metrics.leads);
+        if (data?.metrics?.landingPageViews) setMetaSessions(data.metrics.landingPageViews);
+        if (data?.metrics?.spend) setMetaSpendDash(data.metrics.spend);
+      })
       .catch(() => { });
   }, [activeWorkspace?.id, dateRange]);
 
@@ -125,14 +131,16 @@ export default function DashboardPage() {
   const revSpark = chartData.slice(-14).map(d => d.revenue);
   const leadSpark = chartData.slice(-14).map(d => d.leads);
   const convSpark = chartData.slice(-14).map(d => d.conversions);
+  const lucro = revenue.totalRevenue - metaSpendDash;
+  const taxaConversao = metaSessions > 0 ? (conversions.customers / metaSessions) * 100 : 0;
 
   const kpis: KPIProps[] = [
     { label: "Faturamento", value: formatCurrency(revenue.totalRevenue), change: revenue.growthRate, accentColor: "#00D861", sparkData: revSpark },
-    { label: "Leads Gerados", value: metaLeads > 0 ? formatNumber(metaLeads) : "—", change: 12.4, accentColor: "#5050F2", sparkData: leadSpark },
-    { label: "Conversões", value: conversions.overallConversionRate > 0 ? formatPercentage(conversions.overallConversionRate) : "—", change: -2.1, accentColor: "#FAE125", sparkData: convSpark },
+    { label: "Investimento Total", value: metaSpendDash > 0 ? formatCurrency(metaSpendDash) : "—", change: 0, accentColor: "#E85D22" },
+    { label: "Lucro Total", value: metaSpendDash > 0 ? formatCurrency(lucro) : "—", change: 0, accentColor: "#00D861" },
     { label: "ROAS", value: `${ads.roas.toFixed(2)}x`, change: 8.7, accentColor: "#00D861" },
-    { label: "Custo por Lead", value: metaLeads > 0 ? formatCurrency(conversions.costPerLead) : "—", change: -5.3, accentColor: "#E85D22" },
-    { label: "CTR", value: formatPercentage(ads.ctr), change: 1.8, accentColor: "#5050F2" },
+    { label: "Nº de Vendas", value: formatNumber(conversions.customers), change: 0, accentColor: "#5050F2" },
+    { label: "Taxa de Conversão", value: taxaConversao > 0 ? formatPercentage(taxaConversao) : "—", change: 0, accentColor: "#FAE125" },
   ];
 
   const chart = chartData.map(d => ({ ...d, date: d.date.slice(5).replace("-", "/") }));
