@@ -6,13 +6,12 @@ import {
   XAxis, YAxis, CartesianGrid, Tooltip,
   ResponsiveContainer, LineChart, Line,
 } from "recharts";
-import { RefreshCw, ArrowUpRight, ArrowDownRight, Wifi, WifiOff } from "lucide-react";
+import { RefreshCw, ArrowUpRight, ArrowDownRight, Wifi, WifiOff, Calendar, ChevronDown } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useMetrics, DateRange } from "@/hooks/use-metrics";
 import { useWorkspace } from "@/contexts/workspace-context";
 import { formatCurrency, formatPercentage, formatNumber } from "@/lib/metrics-service";
 import { cn } from "@/lib/utils";
-import { Calendar, ChevronDown } from "lucide-react";
 
 // ─── Sparkline ───
 function Sparkline({ data, color }: { data: number[]; color: string }) {
@@ -58,79 +57,117 @@ function KPICard({ label, value, change, accentColor, sparkData, isLoading }: KP
   );
 }
 
-// ─── Date Range ───
-function DateRangeSelector({ value, onChange }: { value: DateRange; onChange: (r: DateRange) => void }) {
-  const [showCustom, setShowCustom] = useState(false);
-  const [customSince, setCustomSince] = useState("");
-  const [customUntil, setCustomUntil] = useState("");
+// ─── Date Range Picker ───
+interface CustomRange { since: string; until: string; }
+
+const PRESETS = [
+  { label: "Hoje", value: "today" },
+  { label: "7 dias", value: "7d" },
+  { label: "14 dias", value: "14d" },
+  { label: "30 dias", value: "30d" },
+  { label: "90 dias", value: "90d" },
+  { label: "Personalizado", value: "custom" },
+];
+
+function getPresetDates(preset: string): CustomRange {
+  const until = new Date();
+  const since = new Date();
+  switch (preset) {
+    case "today": break;
+    case "7d": since.setDate(since.getDate() - 7); break;
+    case "14d": since.setDate(since.getDate() - 14); break;
+    case "30d": since.setDate(since.getDate() - 30); break;
+    case "90d": since.setDate(since.getDate() - 90); break;
+    default: since.setDate(since.getDate() - 30);
+  }
+  return {
+    since: since.toISOString().split("T")[0],
+    until: until.toISOString().split("T")[0],
+  };
+}
+
+function DateRangePicker({ onChange }: { onChange: (range: CustomRange) => void }) {
+  const [preset, setPreset] = React.useState("30d");
+  const [customSince, setCustomSince] = React.useState("");
+  const [customUntil, setCustomUntil] = React.useState("");
+  const [showDropdown, setShowDropdown] = React.useState(false);
   const dropdownRef = React.useRef<HTMLDivElement>(null);
 
-  useEffect(() => {
+  React.useEffect(() => {
     function handleClick(e: MouseEvent) {
       if (dropdownRef.current && !dropdownRef.current.contains(e.target as Node)) {
-        setShowCustom(false);
+        setShowDropdown(false);
       }
     }
     document.addEventListener("mousedown", handleClick);
     return () => document.removeEventListener("mousedown", handleClick);
   }, []);
 
+  function handlePreset(value: string) {
+    if (value === "custom") { setShowDropdown((v) => !v); return; }
+    setPreset(value);
+    setShowDropdown(false);
+    onChange(getPresetDates(value));
+  }
+
   function applyCustom() {
     if (customSince && customUntil) {
-      setShowCustom(false);
-      onChange("custom" as DateRange);
+      setPreset("custom");
+      setShowDropdown(false);
+      onChange({ since: customSince, until: customUntil });
     }
   }
 
+  const displayLabel =
+    preset === "custom" && customSince && customUntil
+      ? `${customSince.slice(5).replace("-", "/")} → ${customUntil.slice(5).replace("-", "/")}`
+      : "Personalizado";
+
   return (
-    <div className="flex items-center gap-1 flex-wrap">
-      <div className="flex rounded-lg border border-white/[0.07] bg-white/[0.03] p-0.5">
-        {(["7d", "14d", "30d", "90d"] as DateRange[]).map((r) => (
-          <button key={r} onClick={() => onChange(r)}
-            className={cn("rounded-md px-2.5 py-1 text-[11px] font-semibold transition-all",
-              value === r ? "bg-white text-[#08080A]" : "text-white/30 hover:text-white/60")}>
-            {r}
+    <div className="flex flex-wrap items-center gap-1.5">
+      {PRESETS.map((p) => (
+        <div key={p.value} className="relative" ref={p.value === "custom" ? dropdownRef : undefined}>
+          <button
+            onClick={() => handlePreset(p.value)}
+            className={cn(
+              "flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-[11px] font-semibold transition-all border",
+              preset === p.value
+                ? "bg-white text-[#08080A] border-white"
+                : "border-white/[0.07] bg-white/[0.03] text-white/40 hover:text-white/70"
+            )}
+          >
+            {p.value === "custom" && <Calendar className="h-3 w-3" />}
+            {p.value === "custom" ? displayLabel : p.label}
+            {p.value === "custom" && (
+              <ChevronDown className={cn("h-3 w-3 transition-transform", showDropdown && "rotate-180")} />
+            )}
           </button>
-        ))}
-      </div>
-      <div className="relative" ref={dropdownRef}>
-        <button
-          onClick={() => setShowCustom((v) => !v)}
-          className={cn(
-            "flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-[11px] font-semibold transition-all border",
-            value === "custom" as DateRange
-              ? "bg-white text-[#08080A] border-white"
-              : "border-white/[0.07] bg-white/[0.03] text-white/40 hover:text-white/70"
-          )}>
-          <Calendar className="h-3 w-3" />
-          {value === "custom" as DateRange && customSince && customUntil
-            ? `${customSince.slice(5).replace("-", "/")} → ${customUntil.slice(5).replace("-", "/")}`
-            : "Personalizado"}
-          <ChevronDown className={cn("h-3 w-3 transition-transform", showCustom && "rotate-180")} />
-        </button>
-        {showCustom && (
-          <div className="absolute left-0 top-full mt-1.5 z-50 rounded-xl border border-white/[0.10] bg-[#0D0D10] p-4 shadow-2xl">
-            <div className="flex gap-4">
-              <div className="space-y-2">
-                <label className="block text-[10px] font-bold uppercase tracking-wider text-white/30">De</label>
-                <input type="date" value={customSince} onChange={(e) => setCustomSince(e.target.value)}
-                  className="rounded-lg border border-white/[0.08] bg-white/[0.04] px-3 py-2 text-xs text-white outline-none focus:border-white/20 [color-scheme:dark]" />
+          {p.value === "custom" && showDropdown && (
+            <div className="absolute right-0 top-full mt-1.5 z-50 rounded-xl border border-white/[0.10] bg-[#0D0D10] p-4 shadow-2xl">
+              <div className="flex gap-4">
+                <div className="space-y-2">
+                  <label className="block text-[10px] font-bold uppercase tracking-wider text-white/30">De</label>
+                  <input type="date" value={customSince} onChange={(e) => setCustomSince(e.target.value)}
+                    className="rounded-lg border border-white/[0.08] bg-white/[0.04] px-3 py-2 text-xs text-white outline-none focus:border-white/20 [color-scheme:dark]" />
+                </div>
+                <div className="flex items-end pb-2">
+                  <span className="text-white/20 text-sm">→</span>
+                </div>
+                <div className="space-y-2">
+                  <label className="block text-[10px] font-bold uppercase tracking-wider text-white/30">Até</label>
+                  <input type="date" value={customUntil} onChange={(e) => setCustomUntil(e.target.value)}
+                    min={customSince}
+                    className="rounded-lg border border-white/[0.08] bg-white/[0.04] px-3 py-2 text-xs text-white outline-none focus:border-white/20 [color-scheme:dark]" />
+                </div>
               </div>
-              <div className="flex items-end pb-2"><span className="text-white/20 text-sm">→</span></div>
-              <div className="space-y-2">
-                <label className="block text-[10px] font-bold uppercase tracking-wider text-white/30">Até</label>
-                <input type="date" value={customUntil} onChange={(e) => setCustomUntil(e.target.value)}
-                  min={customSince}
-                  className="rounded-lg border border-white/[0.08] bg-white/[0.04] px-3 py-2 text-xs text-white outline-none focus:border-white/20 [color-scheme:dark]" />
-              </div>
+              <button onClick={applyCustom} disabled={!customSince || !customUntil}
+                className="mt-3 w-full rounded-lg bg-white py-2 text-[11px] font-bold text-[#08080A] hover:bg-white/90 disabled:opacity-40 transition-all">
+                Aplicar período
+              </button>
             </div>
-            <button onClick={applyCustom} disabled={!customSince || !customUntil}
-              className="mt-3 w-full rounded-lg bg-white py-2 text-[11px] font-bold text-[#08080A] hover:bg-white/90 disabled:opacity-40 transition-all">
-              Aplicar período
-            </button>
-          </div>
-        )}
-      </div>
+          )}
+        </div>
+      ))}
     </div>
   );
 }
@@ -162,6 +199,7 @@ function ChartTooltip({ active, payload, label }: {
 // ─── Page ───
 export default function DashboardPage() {
   const [dateRange, setDateRange] = useState<DateRange>("30d");
+  const [activeSince, setActiveSince] = useState<string | undefined>(undefined);
   const { activeWorkspace } = useWorkspace();
 
   const [metaLeads, setMetaLeads] = useState(0);
@@ -172,9 +210,9 @@ export default function DashboardPage() {
     if (!activeWorkspace?.id) return;
 
     const fetchMeta = () => {
-      const days = dateRange === "7d" ? 7 : dateRange === "14d" ? 14 : dateRange === "30d" ? 30 : 90;
       const until = new Date().toISOString().split("T")[0];
-      const since = new Date(Date.now() - days * 86400000).toISOString().split("T")[0];
+      const days = dateRange === "7d" ? 7 : dateRange === "14d" ? 14 : dateRange === "30d" ? 30 : 90;
+      const since = activeSince ?? new Date(Date.now() - days * 86400000).toISOString().split("T")[0];
       const params = new URLSearchParams({ since, until, workspaceId: activeWorkspace.id });
       fetch(`/api/meta-ads?${params}`)
         .then((r) => r.json())
@@ -189,14 +227,21 @@ export default function DashboardPage() {
     fetchMeta();
     const metaPoll = setInterval(fetchMeta, 5 * 60 * 1000);
     return () => clearInterval(metaPoll);
-  }, [activeWorkspace?.id, dateRange]);
+  }, [activeWorkspace?.id, dateRange, activeSince]);
 
   const { revenue, conversions, ads, chartData, topProducts, isLoading, isRefreshing, isLive, lastUpdated, refresh, setDateRange: applyRange } = useMetrics({
     dateRange,
+    sinceDate: activeSince,
     workspaceId: activeWorkspace?.id ?? null,
   });
 
-  function handleRange(r: DateRange) { setDateRange(r); applyRange(r); }
+  function handleDateChange(range: CustomRange) {
+    setActiveSince(range.since);
+    const days = Math.ceil((new Date(range.until).getTime() - new Date(range.since).getTime()) / 86400000);
+    const preset: DateRange = days <= 10 ? "7d" : days <= 21 ? "14d" : days <= 60 ? "30d" : "90d";
+    setDateRange(preset);
+    applyRange(preset);
+  }
 
   const revSpark = chartData.slice(-14).map(d => d.revenue);
   const leadSpark = chartData.slice(-14).map(d => d.leads);
@@ -233,7 +278,7 @@ export default function DashboardPage() {
 
       <div className="flex-1 space-y-5 p-6 overflow-y-auto">
         {/* Header */}
-        <div className="flex items-center gap-3">
+        <div className="flex items-start justify-between gap-4">
           <div>
             <h1 className="text-lg font-black text-white tracking-tight">Visão Geral</h1>
             <p className="mt-0.5 text-[11px] text-white/25">
@@ -242,15 +287,14 @@ export default function DashboardPage() {
                 : "Carregando..."}
             </p>
           </div>
-        </div>
-
-        <div className="flex items-center gap-2">
-          <DateRangeSelector value={dateRange} onChange={handleRange} />
-          <Button variant="ghost" size="icon"
-            className="h-8 w-8 rounded-lg border border-white/[0.07] bg-white/[0.03] hover:bg-white/[0.06] text-white/40"
-            onClick={refresh} disabled={isRefreshing}>
-            <RefreshCw className={cn("h-3.5 w-3.5", isRefreshing && "animate-spin")} />
-          </Button>
+          <div className="flex items-center gap-2 flex-wrap justify-end">
+            <DateRangePicker onChange={handleDateChange} />
+            <Button variant="ghost" size="icon"
+              className="h-8 w-8 rounded-lg border border-white/[0.07] bg-white/[0.03] hover:bg-white/[0.06] text-white/40"
+              onClick={refresh} disabled={isRefreshing}>
+              <RefreshCw className={cn("h-3.5 w-3.5", isRefreshing && "animate-spin")} />
+            </Button>
+          </div>
         </div>
 
         {/* KPIs */}

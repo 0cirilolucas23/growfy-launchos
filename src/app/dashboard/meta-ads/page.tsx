@@ -162,7 +162,7 @@ function DateRangePicker({ onChange }: { onChange: (range: MetaDateRange) => voi
             )}
           </button>
           {p.value === "custom" && showDropdown && (
-            <div className="absolute left-0 top-full mt-1.5 z-50 rounded-xl border border-white/[0.10] bg-[#0D0D10] p-4 shadow-2xl">
+            <div className="absolute right-0 top-full mt-1.5 z-50 rounded-xl border border-white/[0.10] bg-[#0D0D10] p-4 shadow-2xl">
               <div className="flex gap-4">
                 <div className="space-y-2">
                   <label className="block text-[10px] font-bold uppercase tracking-wider text-white/30">De</label>

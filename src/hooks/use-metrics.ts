@@ -49,6 +49,7 @@ export interface MetricsState {
 
 export interface UseMetricsOptions {
   dateRange?: DateRange;
+  sinceDate?: string;
   useMock?: boolean;
   workspaceId?: string | null;
 }
@@ -170,7 +171,7 @@ export function useMetrics(options: UseMetricsOptions = {}): MetricsState & {
   refresh: () => Promise<void>;
   setDateRange: (range: DateRange) => void;
 } {
-  const { dateRange: initialRange = "30d", useMock = false, workspaceId } = options;
+  const { dateRange: initialRange = "30d", useMock = false, workspaceId, sinceDate } = options;
   const [dateRange, setDateRange] = useState<DateRange>(initialRange);
   const [state, setState] = useState<MetricsState>({
     ...EMPTY_METRICS,
@@ -186,8 +187,9 @@ export function useMetrics(options: UseMetricsOptions = {}): MetricsState & {
 
   const loadMockData = useCallback(() => {
     const events = generateMockEvents(250);
-    const cutoff = new Date();
-    cutoff.setDate(cutoff.getDate() - days);
+    const cutoff = sinceDate
+      ? new Date(sinceDate + "T00:00:00")
+      : (() => { const d = new Date(); d.setDate(d.getDate() - days); return d; })();
     const filtered = events.filter((e) => new Date(e.timestamp) >= cutoff);
     setState((prev) => ({
       ...prev,
@@ -198,7 +200,7 @@ export function useMetrics(options: UseMetricsOptions = {}): MetricsState & {
       lastUpdated: new Date(),
       error: null,
     }));
-  }, [days]);
+  }, [days, sinceDate]);
 
   const loadFromFirestore = useCallback(async () => {
     // No workspaceId → use mock
@@ -208,9 +210,9 @@ export function useMetrics(options: UseMetricsOptions = {}): MetricsState & {
     }
 
     try {
-      const cutoff = new Date();
-      cutoff.setDate(cutoff.getDate() - days);
-      cutoff.setHours(0, 0, 0, 0);
+      const cutoff = sinceDate
+        ? new Date(sinceDate + "T00:00:00")
+        : (() => { const d = new Date(); d.setDate(d.getDate() - days); d.setHours(0, 0, 0, 0); return d; })();
       const q = query(
         collection(db, "webhook_events"),
         where("workspaceId", "==", workspaceId)
@@ -240,7 +242,7 @@ export function useMetrics(options: UseMetricsOptions = {}): MetricsState & {
       let metaSpend = 0, metaLeads = 0, metaClicks = 0, metaImpressions = 0, metaFrequency = 0;
       try {
         const until = new Date().toISOString().split("T")[0];
-        const since = new Date(Date.now() - days * 86400000).toISOString().split("T")[0];
+        const since = sinceDate ?? new Date(Date.now() - days * 86400000).toISOString().split("T")[0];
         const params = new URLSearchParams({ since, until, ...(workspaceId ? { workspaceId } : {}) });
         const metaRes = await fetch(`/api/meta-ads?${params}`);
         const metaData = await metaRes.json();
@@ -274,7 +276,7 @@ export function useMetrics(options: UseMetricsOptions = {}): MetricsState & {
         lastUpdated: new Date(),
       }));
     }
-  }, [days, workspaceId, loadMockData]);
+  }, [days, workspaceId, loadMockData, sinceDate]);
 
   const subscribeRealtime = useCallback(() => {
     if (!workspaceId) return;
