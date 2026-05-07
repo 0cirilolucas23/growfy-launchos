@@ -3,18 +3,9 @@
  * ✅ Multi-workspace: lê metaAccessToken e metaAdAccountId do workspace no Firestore
  */
 import { NextRequest, NextResponse } from "next/server";
-import { initializeApp, getApps, cert } from "firebase-admin/app";
-import { getFirestore } from "firebase-admin/firestore";
 import { fetchMetaAdsDashboard } from "@/lib/meta-ads-service";
 import type { MetaDateRange, MetaCredentials } from "@/lib/meta-ads-service";
-
-function getAdminDb() {
-  if (!getApps().length) {
-    const serviceAccount = JSON.parse(process.env.FIREBASE_ADMIN_SERVICE_ACCOUNT!);
-    initializeApp({ credential: cert(serviceAccount) });
-  }
-  return getFirestore();
-}
+import { getAdminDb } from "@/lib/firebase-admin";
 
 export async function GET(req: NextRequest) {
   try {

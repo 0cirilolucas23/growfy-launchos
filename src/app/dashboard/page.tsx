@@ -170,18 +170,25 @@ export default function DashboardPage() {
 
   useEffect(() => {
     if (!activeWorkspace?.id) return;
-    const days = dateRange === "7d" ? 7 : dateRange === "14d" ? 14 : dateRange === "30d" ? 30 : 90;
-    const until = new Date().toISOString().split("T")[0];
-    const since = new Date(Date.now() - days * 86400000).toISOString().split("T")[0];
-    const params = new URLSearchParams({ since, until, workspaceId: activeWorkspace.id });
-    fetch(`/api/meta-ads?${params}`)
-      .then((r) => r.json())
-      .then((data) => {
-        if (data?.metrics?.leads) setMetaLeads(data.metrics.leads);
-        if (data?.metrics?.landingPageViews) setMetaSessions(data.metrics.landingPageViews);
-        if (data?.metrics?.spend) setMetaSpendDash(data.metrics.spend);
-      })
-      .catch(() => { });
+
+    const fetchMeta = () => {
+      const days = dateRange === "7d" ? 7 : dateRange === "14d" ? 14 : dateRange === "30d" ? 30 : 90;
+      const until = new Date().toISOString().split("T")[0];
+      const since = new Date(Date.now() - days * 86400000).toISOString().split("T")[0];
+      const params = new URLSearchParams({ since, until, workspaceId: activeWorkspace.id });
+      fetch(`/api/meta-ads?${params}`)
+        .then((r) => r.json())
+        .then((data) => {
+          if (data?.metrics?.leads) setMetaLeads(data.metrics.leads);
+          if (data?.metrics?.landingPageViews) setMetaSessions(data.metrics.landingPageViews);
+          if (data?.metrics?.spend) setMetaSpendDash(data.metrics.spend);
+        })
+        .catch(() => { });
+    };
+
+    fetchMeta();
+    const metaPoll = setInterval(fetchMeta, 5 * 60 * 1000);
+    return () => clearInterval(metaPoll);
   }, [activeWorkspace?.id, dateRange]);
 
   const { revenue, conversions, ads, chartData, topProducts, isLoading, isRefreshing, isLive, lastUpdated, refresh, setDateRange: applyRange } = useMetrics({
@@ -226,7 +233,7 @@ export default function DashboardPage() {
 
       <div className="flex-1 space-y-5 p-6 overflow-y-auto">
         {/* Header */}
-        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <div className="flex items-center gap-3">
           <div>
             <h1 className="text-lg font-black text-white tracking-tight">Visão Geral</h1>
             <p className="mt-0.5 text-[11px] text-white/25">
@@ -235,14 +242,15 @@ export default function DashboardPage() {
                 : "Carregando..."}
             </p>
           </div>
-          <div className="flex items-center gap-2">
-            <DateRangeSelector value={dateRange} onChange={handleRange} />
-            <Button variant="ghost" size="icon"
-              className="h-8 w-8 rounded-lg border border-white/[0.07] bg-white/[0.03] hover:bg-white/[0.06] text-white/40"
-              onClick={refresh} disabled={isRefreshing}>
-              <RefreshCw className={cn("h-3.5 w-3.5", isRefreshing && "animate-spin")} />
-            </Button>
-          </div>
+        </div>
+
+        <div className="flex items-center gap-2">
+          <DateRangeSelector value={dateRange} onChange={handleRange} />
+          <Button variant="ghost" size="icon"
+            className="h-8 w-8 rounded-lg border border-white/[0.07] bg-white/[0.03] hover:bg-white/[0.06] text-white/40"
+            onClick={refresh} disabled={isRefreshing}>
+            <RefreshCw className={cn("h-3.5 w-3.5", isRefreshing && "animate-spin")} />
+          </Button>
         </div>
 
         {/* KPIs */}

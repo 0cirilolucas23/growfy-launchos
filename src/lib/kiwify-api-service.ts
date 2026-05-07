@@ -11,6 +11,7 @@ export interface KiwifyOrder {
   payment_method?: string;
   // Todos os campos monetários possíveis
   sale_amount?: number;
+  net_amount?: number;
   amount?: number;
   charge_amount?: number;
   price?: number;
@@ -77,9 +78,10 @@ export function getOrderStatus(order: KiwifyOrder): string {
   return (order.order_status ?? order.status ?? "unknown") as string;
 }
 
-// ✅ Tenta todos os campos monetários possíveis
 export function getOrderAmount(order: KiwifyOrder): number {
-  const raw = (order.net_amount as number | undefined) ?? 0;
+  // sale_amount = gross (webhook field), net_amount = producer net (import API field)
+  // Both are in centavos
+  const raw = (order.sale_amount ?? order.net_amount ?? order.amount ?? order.charge_amount ?? order.total_price ?? order.total ?? 0) as number;
   return Number(raw) > 0 ? Number(raw) / 100 : 0;
 }
 

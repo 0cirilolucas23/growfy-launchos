@@ -1,0 +1,14 @@
+{
+  "permissions": {
+    "allow": [
+      "PowerShell(vercel *)",
+      "Bash(vercel *)",
+      "Bash(findstr /i \"dashboard\\\\|overview\")",
+      "Bash(npm run *)",
+      "Bash(Get-Content \"C:\\\\Users\\\\lucas\\\\AppData\\\\Local\\\\Temp\\\\claude\\\\C--Users-lucas-growfy-launchos\\\\e136f850-9cb5-492e-b4a2-5ac718aeebaa\\\\tasks\\\\bfu3vzp8k.output\" -Tail 20)",
+      "Bash(npm install *)",
+      "Bash(grep -o 'FIREBASE_ADMIN_SERVICE_ACCOUNT=.\\\\{0,80\\\\}' .env)",
+      "Bash(git add *)"
+    ]
+  }
+}

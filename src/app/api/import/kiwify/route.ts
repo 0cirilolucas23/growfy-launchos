@@ -1,20 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { fetchAllKiwifyOrders, normalizeKiwifyOrder, getOrderId } from "@/lib/kiwify-api-service";
-import { initializeApp, getApps, cert } from "firebase-admin/app";
-import { getFirestore } from "firebase-admin/firestore";
+import { getAdminDb } from "@/lib/firebase-admin";
 
 export const maxDuration = 300;
-
-function getAdminDb() {
-  if (!getApps().length) {
-    const serviceAccount = JSON.parse(process.env.FIREBASE_ADMIN_SERVICE_ACCOUNT!);
-    initializeApp({
-      credential: cert(serviceAccount),
-    });
-    getFirestore().settings({ ignoreUndefinedProperties: true });
-  }
-  return getFirestore();
-}
 
   // ─────────────────────────────────────────────
   // GET — verifica quantos eventos já existem

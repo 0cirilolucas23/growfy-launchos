@@ -307,6 +307,16 @@ export function useMetrics(options: UseMetricsOptions = {}): MetricsState & {
     } else {
       loadFromFirestore();
       subscribeRealtime();
+
+      // Polling a cada 5min como fallback (webhook + Meta Ads)
+      const pollInterval = setInterval(() => {
+        loadFromFirestore();
+      }, 5 * 60 * 1000);
+
+      return () => {
+        unsubscribeRef.current?.();
+        clearInterval(pollInterval);
+      };
     }
 
     return () => { unsubscribeRef.current?.(); };
