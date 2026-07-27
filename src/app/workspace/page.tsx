@@ -4,20 +4,41 @@ import React, { useState } from "react";
 import { useRouter } from "next/navigation";
 import { useWorkspace } from "@/contexts/workspace-context";
 import { useAuth } from "@/contexts/auth-context";
-import { Workspace } from "@/lib/workspace-service";
-import { Plus, Zap, Users, ArrowRight, Loader2 } from "lucide-react";
+import { Workspace, WorkspacePlatform } from "@/lib/workspace-service";
+import { Plus, Zap, Users, ArrowRight, Loader2, Check } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 // ─────────────────────────────────────────────
 // Create Workspace Form
 // ─────────────────────────────────────────────
 
+type PlatformKey = "kiwify" | "hotmart" | "eduzz" | "kommo";
+
+const PLATFORM_OPTIONS: { key: PlatformKey; label: string }[] = [
+  { key: "kiwify", label: "Kiwify" },
+  { key: "hotmart", label: "Hotmart" },
+  { key: "eduzz", label: "Eduzz" },
+  { key: "kommo", label: "Kommo" },
+];
+
 function CreateWorkspaceForm({ onCreated }: { onCreated: (w: Workspace) => void }) {
   const { createNewWorkspace } = useWorkspace();
   const [name, setName] = useState("");
   const [clientName, setClientName] = useState("");
+  const [platforms, setPlatforms] = useState<Record<PlatformKey, boolean>>({
+    kiwify: true,
+    hotmart: true,
+    eduzz: true,
+    kommo: false,
+  });
+  const [kommoSubdomain, setKommoSubdomain] = useState("");
+  const [kommoAccessToken, setKommoAccessToken] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  function togglePlatform(key: PlatformKey) {
+    setPlatforms((prev) => ({ ...prev, [key]: !prev[key] }));
+  }
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -25,9 +46,19 @@ function CreateWorkspaceForm({ onCreated }: { onCreated: (w: Workspace) => void 
     setIsLoading(true);
     setError(null);
     try {
+      const platformsArray: WorkspacePlatform[] = PLATFORM_OPTIONS.map((p) => ({
+        name: p.key,
+        enabled: platforms[p.key],
+      }));
+
       const workspace = await createNewWorkspace({
         name: name.trim(),
         clientName: clientName.trim() || name.trim(),
+        platforms: platformsArray,
+        ...(platforms.kommo && {
+          kommoSubdomain: kommoSubdomain.trim(),
+          kommoAccessToken: kommoAccessToken.trim(),
+        }),
       });
       onCreated(workspace);
     } catch (err) {
@@ -70,6 +101,70 @@ function CreateWorkspaceForm({ onCreated }: { onCreated: (w: Workspace) => void 
           className="w-full rounded-xl border border-white/[0.08] bg-white/[0.04] px-4 py-3 text-sm text-white placeholder:text-white/20 outline-none focus:border-white/20 transition-all"
         />
       </div>
+      <div>
+        <label className="block text-xs font-semibold uppercase tracking-wider text-white/40 mb-1.5">
+          Plataformas
+        </label>
+        <div className="grid grid-cols-2 gap-2">
+          {PLATFORM_OPTIONS.map((p) => {
+            const enabled = platforms[p.key];
+            return (
+              <button
+                type="button"
+                key={p.key}
+                onClick={() => togglePlatform(p.key)}
+                className={cn(
+                  "flex items-center gap-2 rounded-xl border px-3 py-2.5 text-sm font-semibold transition-all",
+                  enabled
+                    ? "border-white/30 bg-white/[0.08] text-white"
+                    : "border-white/[0.08] bg-white/[0.02] text-white/40 hover:text-white/70"
+                )}
+              >
+                <span
+                  className={cn(
+                    "flex h-4 w-4 items-center justify-center rounded border transition-all",
+                    enabled ? "border-white bg-white" : "border-white/20"
+                  )}
+                >
+                  {enabled && <Check className="h-3 w-3 text-[#08080A]" />}
+                </span>
+                {p.label}
+              </button>
+            );
+          })}
+        </div>
+      </div>
+      {platforms.kommo && (
+        <div className="space-y-3 rounded-xl border border-white/[0.08] bg-white/[0.02] p-4">
+          <p className="text-xs text-white/40">
+            Credenciais Kommo — você poderá sincronizar o funil depois em Configurações.
+          </p>
+          <div>
+            <label className="block text-xs font-semibold uppercase tracking-wider text-white/40 mb-1.5">
+              Subdomínio Kommo
+            </label>
+            <input
+              type="text"
+              value={kommoSubdomain}
+              onChange={(e) => setKommoSubdomain(e.target.value)}
+              placeholder="ex: growfy"
+              className="w-full rounded-xl border border-white/[0.08] bg-white/[0.04] px-4 py-3 text-sm text-white placeholder:text-white/20 outline-none focus:border-white/20 transition-all"
+            />
+          </div>
+          <div>
+            <label className="block text-xs font-semibold uppercase tracking-wider text-white/40 mb-1.5">
+              Access Token
+            </label>
+            <input
+              type="password"
+              value={kommoAccessToken}
+              onChange={(e) => setKommoAccessToken(e.target.value)}
+              placeholder="Long-lived token"
+              className="w-full rounded-xl border border-white/[0.08] bg-white/[0.04] px-4 py-3 text-sm text-white placeholder:text-white/20 outline-none focus:border-white/20 transition-all"
+            />
+          </div>
+        </div>
+      )}
       <button
         type="submit"
         disabled={isLoading || !name.trim()}

@@ -33,6 +33,15 @@ import {
 
 export type DateRange = "7d" | "14d" | "30d" | "90d";
 
+export interface MetricChanges {
+  faturamento: number;
+  investimento: number;
+  lucro: number;
+  roas: number;
+  vendas: number;
+  taxaConversao: number;
+}
+
 export interface MetricsState {
   events: WebhookEvent[];
   revenue: RevenueMetrics;
@@ -40,6 +49,8 @@ export interface MetricsState {
   ads: AdMetrics;
   chartData: ChartDataPoint[];
   topProducts: ProductPerformance[];
+  changes: MetricChanges;
+  metaSessions: number;
   isLoading: boolean;
   isRefreshing: boolean;
   isLive: boolean; // true = Firestore data, false = mock
@@ -58,7 +69,6 @@ export interface UseMetricsOptions {
 // Constants
 // ─────────────────────────────────────────────
 
-const DEFAULT_AD_SPEND = 3500;
 const DATE_RANGE_DAYS: Record<DateRange, number> = {
   "7d": 7, "14d": 14, "30d": 30, "90d": 90,
 };
@@ -76,23 +86,21 @@ function buildMetrics(
   metaImpressions = 0,
   metaCtr = 0,
   metaFrequency = 0,
-): Omit<MetricsState, "isLoading" | "isRefreshing" | "isLive" | "error" | "lastUpdated"> {
+): Omit<MetricsState, "isLoading" | "isRefreshing" | "isLive" | "error" | "lastUpdated" | "changes" | "metaSessions"> {
   const revenue = aggregateRevenue(events);
   revenue.netRevenue = revenue.netRevenue * 2;
   revenue.totalRevenue = revenue.totalRevenue * 2;
 
-  const spend = metaSpend > 0 ? metaSpend : DEFAULT_AD_SPEND;
-
   const conversions = calculateConversionMetrics(events, {
-    spend,
-    clicks: metaClicks > 0 ? metaClicks : Math.round(spend / 2.5),
+    spend: metaSpend,
+    clicks: metaClicks,
   });
 
   // Sobrescreve leads com dados reais do Meta
   if (metaLeads > 0) conversions.leads = metaLeads;
 
   // Recalcula custo por lead com dados reais
-  conversions.costPerLead = metaLeads > 0 ? spend / metaLeads : 0;
+  conversions.costPerLead = metaLeads > 0 && metaSpend > 0 ? metaSpend / metaLeads : 0;
 
   // Conversões: só mostra se tiver leads reais
   conversions.overallConversionRate = metaLeads > 0
@@ -100,11 +108,11 @@ function buildMetrics(
     : 0;
 
   const ads = calculateAdMetrics(
-    spend,
-    metaImpressions > 0 ? metaImpressions : Math.round(spend * 80),
-    metaClicks > 0 ? metaClicks : Math.round(spend / 2.5),
+    metaSpend,
+    metaImpressions,
+    metaClicks,
     revenue.netRevenue,
-    metaFrequency > 0 ? metaFrequency : 2.3
+    metaFrequency
   );
 
   const chartData = buildChartData(events, days);
@@ -154,6 +162,10 @@ function firestoreDocToEvent(id: string, data: Record<string, unknown>): Webhook
   };
 }
 
+const EMPTY_CHANGES: MetricChanges = {
+  faturamento: 0, investimento: 0, lucro: 0, roas: 0, vendas: 0, taxaConversao: 0,
+};
+
 const EMPTY_METRICS: Omit<MetricsState, "isLoading" | "isRefreshing" | "isLive" | "error" | "lastUpdated"> = {
   events: [],
   revenue: { totalRevenue: 0, recurringRevenue: 0, oneTimeRevenue: 0, refunds: 0, netRevenue: 0, growthRate: 0 },
@@ -161,6 +173,8 @@ const EMPTY_METRICS: Omit<MetricsState, "isLoading" | "isRefreshing" | "isLive" 
   ads: { spend: 0, impressions: 0, clicks: 0, ctr: 0, cpc: 0, cpm: 0, roas: 0, frequency: 0 },
   chartData: [],
   topProducts: [],
+  changes: EMPTY_CHANGES,
+  metaSessions: 0,
 };
 
 // ─────────────────────────────────────────────
@@ -210,9 +224,16 @@ export function useMetrics(options: UseMetricsOptions = {}): MetricsState & {
     }
 
     try {
+      const now = new Date();
+
       const cutoff = sinceDate
         ? new Date(sinceDate + "T00:00:00")
         : (() => { const d = new Date(); d.setDate(d.getDate() - days); d.setHours(0, 0, 0, 0); return d; })();
+
+      // Período anterior = mesma duração, imediatamente antes do período atual
+      const periodMs = now.getTime() - cutoff.getTime();
+      const prevCutoff = new Date(cutoff.getTime() - periodMs);
+
       const q = query(
         collection(db, "webhook_events"),
         where("workspaceId", "==", workspaceId)
@@ -220,44 +241,94 @@ export function useMetrics(options: UseMetricsOptions = {}): MetricsState & {
 
       const snapshot = await getDocs(q);
 
+      const allDocsEvents = snapshot.docs.map((doc) =>
+        firestoreDocToEvent(doc.id, doc.data() as Record<string, unknown>)
+      );
 
-      const events = snapshot.docs
-        .map((doc) => firestoreDocToEvent(doc.id, doc.data() as Record<string, unknown>))
-        .filter((e) => new Date(e.timestamp) >= cutoff);
+      const events = allDocsEvents.filter((e) => new Date(e.timestamp) >= cutoff);
+      const prevEvents = allDocsEvents.filter((e) => {
+        const t = new Date(e.timestamp);
+        return t >= prevCutoff && t < cutoff;
+      });
 
-      if (events.length === 0) {
-        setState((prev) => ({
-          ...prev,
-          ...EMPTY_METRICS,
-          isLoading: false,
-          isRefreshing: false,
-          isLive: false,
-          lastUpdated: new Date(),
-          error: null,
-        }));
-        return;
-      }
+      // Busca dados do Meta: período atual + anterior em paralelo
+      // (sempre busca, mesmo sem eventos de webhook — Meta pode ter gasto sem vendas)
+      const until = now.toISOString().split("T")[0];
+      const since = sinceDate ?? cutoff.toISOString().split("T")[0];
+      const prevSince = prevCutoff.toISOString().split("T")[0];
+      const prevUntil = new Date(cutoff.getTime() - 86400000).toISOString().split("T")[0];
+      let metaSpend = 0, metaLeads = 0, metaClicks = 0, metaImpressions = 0, metaFrequency = 0, metaLPV = 0;
+      let prevSpend = 0, prevLPV = 0;
 
-      // Busca dados reais do Meta
-      let metaSpend = 0, metaLeads = 0, metaClicks = 0, metaImpressions = 0, metaFrequency = 0;
       try {
-        const until = new Date().toISOString().split("T")[0];
-        const since = sinceDate ?? new Date(Date.now() - days * 86400000).toISOString().split("T")[0];
-        const params = new URLSearchParams({ since, until, ...(workspaceId ? { workspaceId } : {}) });
-        const metaRes = await fetch(`/api/meta-ads?${params}`);
-        const metaData = await metaRes.json();
-        if (metaData?.metrics) {
-          metaSpend = metaData.metrics.spend ?? 0;
-          metaLeads = metaData.metrics.leads ?? 0;
-          metaClicks = metaData.metrics.clicks ?? 0;
-          metaImpressions = metaData.metrics.impressions ?? 0;
-          metaFrequency = metaData.metrics.frequency ?? 0;
+        const currentParams = new URLSearchParams({ since, until });
+        const prevParams = new URLSearchParams({ since: prevSince, until: prevUntil });
+        if (workspaceId) { currentParams.set("workspaceId", workspaceId); prevParams.set("workspaceId", workspaceId); }
+
+        const [currentResult, prevResult] = await Promise.allSettled([
+          fetch(`/api/meta-ads?${currentParams}`).then((r) => r.json()),
+          fetch(`/api/meta-ads?${prevParams}`).then((r) => r.json()),
+        ]);
+
+        if (currentResult.status === "fulfilled" && currentResult.value?.metrics) {
+          const m = currentResult.value.metrics;
+          metaSpend = m.spend ?? 0;
+          metaLeads = m.leads ?? 0;
+          metaClicks = m.clicks ?? 0;
+          metaImpressions = m.impressions ?? 0;
+          metaFrequency = m.frequency ?? 0;
+          metaLPV = m.landingPageViews ?? 0;
+        }
+
+        if (prevResult.status === "fulfilled" && prevResult.value?.metrics) {
+          const m = prevResult.value.metrics;
+          prevSpend = m.spend ?? 0;
+          prevLPV = m.landingPageViews ?? 0;
         }
       } catch { /* sem Meta, usa defaults */ }
+
+      // Agrega receita dos dois períodos para comparação
+      const currRevAgg = aggregateRevenue(events);
+      currRevAgg.totalRevenue *= 2;
+      currRevAgg.netRevenue *= 2;
+
+      const prevRevAgg = aggregateRevenue(prevEvents);
+      prevRevAgg.totalRevenue *= 2;
+      prevRevAgg.netRevenue *= 2;
+
+      const currCustomers = events.filter(
+        (e) => (e.type === "purchase" || e.type === "subscription_start") && e.status === "success"
+      ).length;
+      const prevCustomers = prevEvents.filter(
+        (e) => (e.type === "purchase" || e.type === "subscription_start") && e.status === "success"
+      ).length;
+
+      const pct = (curr: number, prev: number) =>
+        prev > 0 ? ((curr - prev) / prev) * 100 : 0;
+
+      const changes: MetricChanges = {
+        faturamento: pct(currRevAgg.totalRevenue, prevRevAgg.totalRevenue),
+        investimento: pct(metaSpend, prevSpend),
+        lucro: pct(
+          currRevAgg.totalRevenue - metaSpend,
+          prevRevAgg.totalRevenue - prevSpend
+        ),
+        roas: pct(
+          metaSpend > 0 ? currRevAgg.netRevenue / metaSpend : 0,
+          prevSpend > 0 ? prevRevAgg.netRevenue / prevSpend : 0
+        ),
+        vendas: pct(currCustomers, prevCustomers),
+        taxaConversao: pct(
+          metaLPV > 0 ? (currCustomers / metaLPV) * 100 : 0,
+          prevLPV > 0 ? (prevCustomers / prevLPV) * 100 : 0
+        ),
+      };
 
       setState((prev) => ({
         ...prev,
         ...buildMetrics(events, days, metaSpend, metaLeads, metaClicks, metaImpressions, 0, metaFrequency),
+        changes,
+        metaSessions: metaLPV,
         isLoading: false,
         isRefreshing: false,
         isLive: true,

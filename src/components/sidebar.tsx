@@ -5,7 +5,7 @@ import { usePathname, useRouter } from "next/navigation";
 import {
   LayoutDashboard, Search, Calculator, Settings,
   LogOut, Zap, Users, CreditCard, BarChart2,
-  Bell, Webhook, FileText, ChevronDown, Download
+  Bell, Webhook, FileText, ChevronDown, Download, GitBranch
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { logout } from "@/lib/auth-service";
@@ -20,8 +20,17 @@ function MetaIcon({ className }: { className?: string }) {
   );
 }
 
+type NavItem = {
+  href: string;
+  label: string;
+  icon: React.ComponentType<{ className?: string }>;
+  adminOnly: boolean;
+  requires?: "leadPlatform";
+};
+
 // adminOnly = só @growfy.com.br vê
-const sections = [
+// requires = mostra só se o workspace ativo tiver a integração habilitada
+const sections: { label: string; items: NavItem[] }[] = [
   {
     label: "Principal",
     items: [
@@ -39,6 +48,7 @@ const sections = [
     label: "Gestão",
     items: [
       { href: "/dashboard/clientes", label: "Clientes", icon: Users, adminOnly: true },
+      { href: "/dashboard/funil", label: "Funil de Leads", icon: GitBranch, adminOnly: false, requires: "leadPlatform" },
       { href: "/dashboard/pagamentos", label: "Pagamentos", icon: CreditCard, adminOnly: true },
       { href: "/dashboard/relatorios", label: "Relatórios", icon: BarChart2, adminOnly: false },
     ],
@@ -47,8 +57,8 @@ const sections = [
     label: "Sistema",
     items: [
       { href: "/dashboard/configuracoes", label: "Configurações", icon: Settings, adminOnly: true },
-      { href: "/dashboard/webhooks", label: "Webhooks", icon: Webhook, adminOnly: false },
-      { href: "/dashboard/notificacoes", label: "Notificações", icon: Bell, adminOnly: true },
+      { href: "/dashboard/webhooks", label: "Webhooks", icon: Webhook, adminOnly: true },
+      { href: "/dashboard/notificacoes", label: "Notificações", icon: Bell, adminOnly: false },
       { href: "/dashboard/docs", label: "Documentação", icon: FileText, adminOnly: true },
       { href: "/dashboard/importar", label: "Importar dados", icon: Download, adminOnly: true },
     ],
@@ -68,6 +78,9 @@ export function Sidebar() {
   const { user } = useAuth();
 
   const isAdmin = user?.email?.endsWith("@growfy.com.br") ?? false;
+  const hasLeadPlatform = activeWorkspace?.platforms?.some(
+    (p) => p.name === "kommo" && p.enabled
+  ) ?? false;
 
   async function handleLogout() {
     await logout();
@@ -78,11 +91,15 @@ export function Sidebar() {
     return href === "/dashboard" ? pathname === "/dashboard" : pathname.startsWith(href);
   }
 
-  // Filtra seções e itens pelo role
+  // Filtra seções e itens pelo role e pelas integrações habilitadas
   const visibleSections = sections
     .map((section) => ({
       ...section,
-      items: section.items.filter((item) => !item.adminOnly || isAdmin),
+      items: section.items.filter((item) => {
+        if (item.adminOnly && !isAdmin) return false;
+        if (item.requires === "leadPlatform" && !hasLeadPlatform) return false;
+        return true;
+      }),
     }))
     .filter((section) => section.items.length > 0);
 

@@ -78,6 +78,56 @@ async function fetchKiwifyMetrics(
 
   return { revenue, sales, dailyRevenue, byCampaign, byContent };
 };
+
+// ─────────────────────────────────────────────
+// Kommo revenue — só total no período (Kommo não captura UTM)
+// A receita entra no workspace mas não casa com nenhuma campanha específica
+// ─────────────────────────────────────────────
+interface KommoRevenue {
+  revenue: number;
+  sales: number;
+  dailyRevenue: Record<string, number>;
+}
+
+async function fetchKommoRevenue(
+  workspaceId: string,
+  dateRange: MetaDateRange
+): Promise<KommoRevenue> {
+  const since = new Date(dateRange.since + "T00:00:00");
+  const until = new Date(dateRange.until + "T23:59:59");
+
+  const q = query(
+    collection(db, "webhook_events"),
+    where("workspaceId", "==", workspaceId),
+    where("source", "==", "kommo")
+  );
+
+  const snapshot = await getDocs(q);
+  let revenue = 0;
+  let sales = 0;
+  const dailyRevenue: Record<string, number> = {};
+
+  snapshot.forEach((doc) => {
+    const data = doc.data();
+    if (data.status !== "approved") return;
+    if (data.type !== "purchase") return;
+
+    const ts: Date = data.timestamp instanceof Timestamp
+      ? data.timestamp.toDate()
+      : new Date(data.timestamp as string);
+    if (ts < since || ts > until) return;
+
+    const amt = (data.amount as number) ?? 0;
+    revenue += amt;
+    sales += 1;
+
+    const dayKey = ts.toISOString().slice(5, 10).replace("-", "/");
+    dailyRevenue[dayKey] = (dailyRevenue[dayKey] ?? 0) + amt;
+  });
+
+  return { revenue, sales, dailyRevenue };
+}
+
 const PRESETS = [
   { label: "Hoje", value: "today" },
   { label: "7 dias", value: "7d" },
@@ -238,7 +288,7 @@ function getRoasBadge(roas: number) {
 }
 
 function MetaTable({ rows }: {
-  rows: Array<{ id: string; name: string; subName?: string; spend: number; impressions: number; clicks: number; ctr: number; cpc: number; leads: number; purchases: number; roas: number; hookRate?: number; }>;
+  rows: Array<{ id: string; name: string; subName?: string; spend: number; impressions: number; clicks: number; ctr: number; cpc: number; leads: number; purchases: number; roas: number; hookRate?: number; revenue?: number; }>;
 }) {
   if (rows.length === 0) return <p className="py-8 text-center text-xs text-white/20">Nenhum resultado encontrado</p>;
   return (
@@ -246,31 +296,51 @@ function MetaTable({ rows }: {
       <table className="w-full text-xs">
         <thead>
           <tr className="border-b border-white/[0.06]">
-            {["Nome", "Invest.", "Impressões", "Cliques", "CTR", "CPC", "Leads", "Vendas", "ROAS", "Gancho", "Status"].map((col) => (
+            {["Nome", "Invest.", "Faturamento", "Impressões", "Cliques", "CTR", "CPC", "Leads", "Vendas", "ROAS", "Gancho", "Status"].map((col) => (
               <th key={col} className={cn("pb-2.5 pr-4 text-[10px] font-bold uppercase tracking-wider text-white/20 whitespace-nowrap", col === "Nome" ? "text-left" : "text-right")}>{col}</th>
             ))}
           </tr>
         </thead>
         <tbody>
           {rows.map((row) => {
+            const isUnattributed = row.id === "__unattributed__";
             const badge = getRoasBadge(row.roas);
             return (
-              <tr key={row.id} className="border-b border-white/[0.04] hover:bg-white/[0.02] transition-colors">
+              <tr
+                key={row.id}
+                className={cn(
+                  "border-b border-white/[0.04] transition-colors",
+                  isUnattributed
+                    ? "bg-[#FAE125]/[0.03] border-[#FAE125]/10"
+                    : "hover:bg-white/[0.02]"
+                )}
+              >
                 <td className="py-3 pr-4">
-                  <p className="font-semibold text-white/80 truncate max-w-[200px]" title={row.name}>{row.name}</p>
-                  {row.subName && <p className="text-[10px] text-white/25 truncate max-w-[200px]">{row.subName}</p>}
+                  <p className={cn(
+                    "font-semibold truncate max-w-[240px]",
+                    isUnattributed ? "text-[#FAE125]/70 italic" : "text-white/80"
+                  )} title={row.name}>{row.name}</p>
+                  {row.subName && <p className="text-[10px] text-white/25 truncate max-w-[240px]">{row.subName}</p>}
+                  {isUnattributed && (
+                    <p className="text-[10px] text-white/25 mt-0.5">Receita sem UTM (ex: Kommo, tráfego orgânico)</p>
+                  )}
                 </td>
-                <td className="py-3 pr-4 text-right tabular-nums text-white/60">{formatCurrency(row.spend)}</td>
-                <td className="py-3 pr-4 text-right tabular-nums text-white/60">{formatNumber(row.impressions)}</td>
-                <td className="py-3 pr-4 text-right tabular-nums text-white/60">{formatNumber(row.clicks)}</td>
-                <td className="py-3 pr-4 text-right tabular-nums text-white/60">{formatPercentage(row.ctr)}</td>
-                <td className="py-3 pr-4 text-right tabular-nums text-white/60">{formatCurrency(row.cpc)}</td>
-                <td className="py-3 pr-4 text-right tabular-nums text-white/60">{formatNumber(row.leads)}</td>
+                <td className="py-3 pr-4 text-right tabular-nums text-white/60">{isUnattributed ? "—" : formatCurrency(row.spend)}</td>
+                <td className="py-3 pr-4 text-right tabular-nums text-white/70">{row.revenue !== undefined ? formatCurrency(row.revenue) : "—"}</td>
+                <td className="py-3 pr-4 text-right tabular-nums text-white/60">{isUnattributed ? "—" : formatNumber(row.impressions)}</td>
+                <td className="py-3 pr-4 text-right tabular-nums text-white/60">{isUnattributed ? "—" : formatNumber(row.clicks)}</td>
+                <td className="py-3 pr-4 text-right tabular-nums text-white/60">{isUnattributed ? "—" : formatPercentage(row.ctr)}</td>
+                <td className="py-3 pr-4 text-right tabular-nums text-white/60">{isUnattributed ? "—" : formatCurrency(row.cpc)}</td>
+                <td className="py-3 pr-4 text-right tabular-nums text-white/60">{isUnattributed ? "—" : formatNumber(row.leads)}</td>
                 <td className="py-3 pr-4 text-right tabular-nums text-white/60">{formatNumber(row.purchases)}</td>
-                <td className="py-3 pr-4 text-right tabular-nums font-bold text-white/80">{row.roas.toFixed(2)}x</td>
-                <td className="py-3 pr-4 text-right tabular-nums text-white/60">{row.hookRate !== undefined ? formatPercentage(row.hookRate) : "—"}</td>
+                <td className="py-3 pr-4 text-right tabular-nums font-bold text-white/80">{isUnattributed ? "—" : `${row.roas.toFixed(2)}x`}</td>
+                <td className="py-3 pr-4 text-right tabular-nums text-white/60">{isUnattributed || row.hookRate === undefined ? "—" : formatPercentage(row.hookRate)}</td>
                 <td className="py-3 text-right">
-                  <span className="inline-flex items-center rounded-full border px-2 py-0.5 text-[9px] font-bold" style={{ borderColor: `${badge.color}30`, color: badge.color }}>{badge.label}</span>
+                  {isUnattributed ? (
+                    <span className="inline-flex items-center rounded-full border border-[#FAE125]/30 px-2 py-0.5 text-[9px] font-bold text-[#FAE125]/80">Reconciliação</span>
+                  ) : (
+                    <span className="inline-flex items-center rounded-full border px-2 py-0.5 text-[9px] font-bold" style={{ borderColor: `${badge.color}30`, color: badge.color }}>{badge.label}</span>
+                  )}
                 </td>
               </tr>
             );
@@ -320,6 +390,7 @@ export default function MetaAdsPage() {
 
   const [apiData, setApiData] = useState<MetaAdsDashboardData | null>(null);
   const [kiwifyMetrics, setKiwifyMetrics] = useState<KiwifyMetrics | null>(null);
+  const [kommoRevenue, setKommoRevenue] = useState<KommoRevenue | null>(null);
   const [isLive, setIsLive] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -349,15 +420,20 @@ export default function MetaAdsPage() {
       setIsLoading(false);
     }
 
-    // Kiwify — query simples, filtragem em JS
+    // Kiwify + Kommo — receita do workspace pra reconciliação
     if (workspaceId) {
       try {
-        const kw = await fetchKiwifyMetrics(workspaceId, range);
-        console.log("[Meta Ads] Kiwify metrics:", kw);
+        const [kw, km] = await Promise.all([
+          fetchKiwifyMetrics(workspaceId, range),
+          fetchKommoRevenue(workspaceId, range),
+        ]);
+        console.log("[Meta Ads] Kiwify:", kw, "Kommo:", km);
         setKiwifyMetrics(kw);
+        setKommoRevenue(km);
       } catch (err) {
-        console.error("[Meta Ads] Kiwify error:", err);
+        console.error("[Meta Ads] Revenue fetch error:", err);
         setKiwifyMetrics(null);
+        setKommoRevenue(null);
       }
     }
   }, [workspaceId]);
@@ -378,29 +454,81 @@ export default function MetaAdsPage() {
     const minRoas = parseFloat(filters.minRoas) || 0;
     const minSpend = parseFloat(filters.minSpend) || 0;
 
-    function enrichWithKiwify<T extends { name: string; spend: number; roas: number; purchases: number }>(
+    // Receita total do workspace no período (Kiwify + Kommo)
+    // Kiwify entra com *2 (padrão do dashboard), Kommo entra direto (price do lead)
+    const kiwifyRev = (kiwifyMetrics?.revenue ?? 0) * 2;
+    const kommoRev = kommoRevenue?.revenue ?? 0;
+    const totalWorkspaceRevenue = kiwifyRev + kommoRev;
+    const totalWorkspaceSales = (kiwifyMetrics?.sales ?? 0) + (kommoRevenue?.sales ?? 0);
+
+    function enrichWithMap<T extends { name: string; spend: number; roas: number; purchases: number }>(
       rows: T[],
-      kiwifyMap: Record<string, { revenue: number; sales: number }>
-    ) {
+      map: Record<string, { revenue: number; sales: number }>
+    ): Array<T & { revenue: number }> {
       return rows.map((r) => {
-        // Tenta match exato, depois parcial
-        const kw = kiwifyMap[r.name]
-          ?? Object.entries(kiwifyMap).find(([k]) =>
+        const kw = map[r.name]
+          ?? Object.entries(map).find(([k]) =>
             r.name.toLowerCase().includes(k.toLowerCase()) ||
             k.toLowerCase().includes(r.name.toLowerCase())
           )?.[1]
           ?? { revenue: 0, sales: 0 };
 
         const realRoas = r.spend > 0 && kw.revenue > 0 ? kw.revenue / r.spend : r.roas;
-        return { ...r, roas: realRoas, purchases: kw.sales || r.purchases };
+        return { ...r, roas: realRoas, purchases: kw.sales || r.purchases, revenue: kw.revenue };
       });
     }
 
     if (filters.level === "campaign") {
-      const rows = apiData.campaigns
-        .filter((r) => r.name.toLowerCase().includes(search))
-        .filter((r) => r.roas >= minRoas && r.spend >= minSpend);
-      return enrichWithKiwify(rows, kiwifyMetrics?.byCampaign ?? {});
+      // "Ativa no período" = teve gasto. Mais robusto que confiar em status ACTIVE.
+      const activeCampaigns = apiData.campaigns.filter((c) => c.spend > 0);
+
+      // Cenário A: 1 única campanha ativa → 100% da receita do workspace vai pra ela.
+      // Não precisa de utm_campaign, não há outra campanha pra vazar.
+      if (activeCampaigns.length === 1) {
+        const c = activeCampaigns[0];
+        const roas = c.spend > 0 ? totalWorkspaceRevenue / c.spend : 0;
+        const row = {
+          ...c,
+          revenue: totalWorkspaceRevenue,
+          purchases: totalWorkspaceSales || c.purchases,
+          roas,
+        };
+        return [row]
+          .filter((r) => r.name.toLowerCase().includes(search))
+          .filter((r) => r.roas >= minRoas && r.spend >= minSpend);
+      }
+
+      // Cenário B: múltiplas campanhas ativas → atribui via utm_campaign +
+      // linha de reconciliação "Não atribuído" com o delta pra bater com a Visão Geral.
+      const enriched = enrichWithMap(
+        apiData.campaigns
+          .filter((r) => r.name.toLowerCase().includes(search))
+          .filter((r) => r.roas >= minRoas && r.spend >= minSpend),
+        kiwifyMetrics?.byCampaign ?? {}
+      );
+
+      const attributedRevenue = enriched.reduce((sum, r) => sum + r.revenue, 0);
+      const unattributed = totalWorkspaceRevenue - attributedRevenue;
+
+      if (unattributed > 0.01) {
+        enriched.push({
+          id: "__unattributed__",
+          name: "Não atribuído / Outras fontes",
+          status: "",
+          spend: 0,
+          impressions: 0,
+          clicks: 0,
+          ctr: 0,
+          cpc: 0,
+          leads: 0,
+          purchases: 0,
+          roas: 0,
+          hookRate: 0,
+          revenue: unattributed,
+        });
+      }
+
+      return enriched;
     }
 
     if (filters.level === "adset") {
@@ -408,29 +536,34 @@ export default function MetaAdsPage() {
         .filter((r) => r.name.toLowerCase().includes(search) || r.campaignName.toLowerCase().includes(search))
         .filter((r) => r.roas >= minRoas && r.spend >= minSpend)
         .map((r) => ({ ...r, subName: r.campaignName, hookRate: undefined }));
-      return enrichWithKiwify(rows, kiwifyMetrics?.byCampaign ?? {});
+      return enrichWithMap(rows, kiwifyMetrics?.byCampaign ?? {});
     }
 
     const rows = apiData.ads
       .filter((r) => r.name.toLowerCase().includes(search) || r.adsetName.toLowerCase().includes(search))
       .filter((r) => r.roas >= minRoas && r.spend >= minSpend)
       .map((r) => ({ ...r, subName: `${r.campaignName} → ${r.adsetName}` }));
-    return enrichWithKiwify(rows, kiwifyMetrics?.byContent ?? {});
+    return enrichWithMap(rows, kiwifyMetrics?.byContent ?? {});
   }
 
   const metaSpend = apiData?.metrics.spend ?? 0;
   const kiwifyRevenue = (kiwifyMetrics?.revenue ?? 0) * 2;
-  const kiwifySales = kiwifyMetrics?.sales ?? 0;
-  const crossRoas = metaSpend > 0 ? kiwifyRevenue / metaSpend : 0;
-  const crossCpa = kiwifySales > 0 ? metaSpend / kiwifySales : 0;
+  const kommoRev = kommoRevenue?.revenue ?? 0;
+  // Faturamento total do workspace = Kiwify + Kommo (bate com Visão Geral)
+  const totalRevenue = kiwifyRevenue + kommoRev;
+  const totalSales = (kiwifyMetrics?.sales ?? 0) + (kommoRevenue?.sales ?? 0);
+  const crossRoas = metaSpend > 0 ? totalRevenue / metaSpend : 0;
+  const crossCpa = totalSales > 0 ? metaSpend / totalSales : 0;
   const metrics = apiData?.metrics;
-  // Substitua a linha do chartData atual por esta:
+  // Chart soma Kiwify + Kommo por dia
   const chartData = (apiData?.chartData ?? []).map((d) => {
     const dayKey = d.date.slice(5).replace("-", "/");
+    const kwDay = (kiwifyMetrics?.dailyRevenue[dayKey] ?? 0) * 2;
+    const kmDay = kommoRevenue?.dailyRevenue[dayKey] ?? 0;
     return {
       ...d,
       date: dayKey,
-      faturamento: (kiwifyMetrics?.dailyRevenue[dayKey] ?? 0) * 2,
+      faturamento: kwDay + kmDay,
     };
   });
 
@@ -471,15 +604,15 @@ export default function MetaAdsPage() {
         ) : metrics ? (
           <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
             <KPI label="Investimento" value={formatCurrency(metaSpend)} accent="#E85D22" sub="Meta Ads" />
-            <KPI label="Faturamento" value={formatCurrency(kiwifyRevenue)} accent="#00D861" sub="Kiwify" />
-            <KPI label="Vendas" value={formatNumber(kiwifySales)} accent="#5050F2" sub="Kiwify" />
+            <KPI label="Faturamento" value={formatCurrency(totalRevenue)} accent="#00D861" sub={kommoRev > 0 ? "Kiwify + Kommo" : "Kiwify"} />
+            <KPI label="Vendas" value={formatNumber(totalSales)} accent="#5050F2" sub={kommoRev > 0 ? "Kiwify + Kommo" : "Kiwify"} />
             <KPI label="Sessões" value={formatNumber(metrics.landingPageViews)} accent="#FAE125" sub="Meta Ads" />
-            <KPI label="ROAS" value={`${crossRoas.toFixed(2)}x`} accent="#00D861" sub="Kiwify ÷ Meta" />
-            <KPI label="CPA" value={formatCurrency(crossCpa)} accent="#E85D22" sub="Meta ÷ Kiwify" />
+            <KPI label="ROAS" value={`${crossRoas.toFixed(2)}x`} accent="#00D861" sub="Faturamento ÷ Meta" />
+            <KPI label="CPA" value={formatCurrency(crossCpa)} accent="#E85D22" sub="Meta ÷ Vendas" />
             <KPI label="Custo por Sessão" value={formatCurrency(metrics.costPerLandingPageView)} accent="#FAE125" sub="Meta Ads" />
             <KPI
               label="Taxa de Conversão"
-              value={metrics.landingPageViews > 0 ? formatPercentage((kiwifySales / metrics.landingPageViews) * 100) : "—"}
+              value={metrics.landingPageViews > 0 ? formatPercentage((totalSales / metrics.landingPageViews) * 100) : "—"}
               accent="#00D861"
               sub="Vendas ÷ Sessões"
             />

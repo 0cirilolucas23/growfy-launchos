@@ -9,6 +9,7 @@ import {
 import { RefreshCw, ArrowUpRight, ArrowDownRight, Wifi, WifiOff, Calendar, ChevronDown } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useMetrics, DateRange } from "@/hooks/use-metrics";
+import { useAlerts } from "@/hooks/use-alerts";
 import { useWorkspace } from "@/contexts/workspace-context";
 import { formatCurrency, formatPercentage, formatNumber } from "@/lib/metrics-service";
 import { cn } from "@/lib/utils";
@@ -229,11 +230,24 @@ export default function DashboardPage() {
     return () => clearInterval(metaPoll);
   }, [activeWorkspace?.id, dateRange, activeSince]);
 
-  const { revenue, conversions, ads, chartData, topProducts, isLoading, isRefreshing, isLive, lastUpdated, refresh, setDateRange: applyRange } = useMetrics({
+  const { revenue, conversions, ads, chartData, topProducts, changes, isLoading, isRefreshing, isLive, lastUpdated, refresh, setDateRange: applyRange } = useMetrics({
     dateRange,
     sinceDate: activeSince,
     workspaceId: activeWorkspace?.id ?? null,
   });
+
+  // Checa alertas em background sempre que as métricas atualizarem
+  const { loadAlerts, checkAlerts } = useAlerts(activeWorkspace?.id ?? null);
+  useEffect(() => { loadAlerts(); }, [loadAlerts]);
+  useEffect(() => {
+    if (isLoading) return;
+    checkAlerts({
+      roas: ads.roas,
+      faturamento: revenue.totalRevenue,
+      investimento: metaSpendDash,
+      vendas: conversions.customers,
+    });
+  }, [isLoading, ads.roas, revenue.totalRevenue, metaSpendDash, conversions.customers]);
 
   function handleDateChange(range: CustomRange) {
     setActiveSince(range.since);
@@ -250,12 +264,12 @@ export default function DashboardPage() {
   const taxaConversao = metaSessions > 0 ? (conversions.customers / metaSessions) * 100 : 0;
 
   const kpis: KPIProps[] = [
-    { label: "Faturamento", value: formatCurrency(revenue.totalRevenue), change: revenue.growthRate, accentColor: "#00D861", sparkData: revSpark },
-    { label: "Investimento Total", value: metaSpendDash > 0 ? formatCurrency(metaSpendDash) : "—", change: 0, accentColor: "#E85D22" },
-    { label: "Lucro Total", value: metaSpendDash > 0 ? formatCurrency(lucro) : "—", change: 0, accentColor: "#00D861" },
-    { label: "ROAS", value: `${ads.roas.toFixed(2)}x`, change: 8.7, accentColor: "#00D861" },
-    { label: "Nº de Vendas", value: formatNumber(conversions.customers), change: 0, accentColor: "#5050F2" },
-    { label: "Taxa de Conversão", value: taxaConversao > 0 ? formatPercentage(taxaConversao) : "—", change: 0, accentColor: "#FAE125" },
+    { label: "Faturamento", value: formatCurrency(revenue.totalRevenue), change: changes.faturamento, accentColor: "#00D861", sparkData: revSpark },
+    { label: "Investimento Total", value: metaSpendDash > 0 ? formatCurrency(metaSpendDash) : "—", change: changes.investimento, accentColor: "#E85D22" },
+    { label: "Lucro Total", value: metaSpendDash > 0 ? formatCurrency(lucro) : "—", change: changes.lucro, accentColor: "#00D861" },
+    { label: "ROAS", value: ads.spend > 0 ? `${ads.roas.toFixed(2)}x` : "—", change: changes.roas, accentColor: "#00D861" },
+    { label: "Nº de Vendas", value: formatNumber(conversions.customers), change: changes.vendas, accentColor: "#5050F2" },
+    { label: "Taxa de Conversão", value: taxaConversao > 0 ? formatPercentage(taxaConversao) : "—", change: changes.taxaConversao, accentColor: "#FAE125" },
   ];
 
   const chart = chartData.map(d => ({ ...d, date: d.date.slice(5).replace("-", "/") }));
@@ -391,12 +405,12 @@ export default function DashboardPage() {
             <h2 className="mb-4 text-sm font-bold text-white">Performance de Anúncios</h2>
             <div className="grid grid-cols-2 gap-2">
               {[
-                { label: "Investimento", value: formatCurrency(ads.spend), accent: "#E85D22" },
-                { label: "ROAS", value: `${ads.roas.toFixed(2)}x`, accent: "#00D861" },
-                { label: "CPC", value: formatCurrency(ads.cpc), accent: "#5050F2" },
-                { label: "CPM", value: formatCurrency(ads.cpm), accent: "#FAE125" },
-                { label: "CTR", value: formatPercentage(ads.ctr), accent: "#00D861" },
-                { label: "Frequência", value: ads.frequency.toFixed(1), accent: "#5050F2" },
+                { label: "Investimento", value: ads.spend > 0 ? formatCurrency(ads.spend) : "—", accent: "#E85D22" },
+                { label: "ROAS", value: ads.spend > 0 ? `${ads.roas.toFixed(2)}x` : "—", accent: "#00D861" },
+                { label: "CPC", value: ads.spend > 0 ? formatCurrency(ads.cpc) : "—", accent: "#5050F2" },
+                { label: "CPM", value: ads.spend > 0 ? formatCurrency(ads.cpm) : "—", accent: "#FAE125" },
+                { label: "CTR", value: ads.spend > 0 ? formatPercentage(ads.ctr) : "—", accent: "#00D861" },
+                { label: "Frequência", value: ads.spend > 0 ? ads.frequency.toFixed(1) : "—", accent: "#5050F2" },
               ].map((m) => (
                 <div key={m.label} className="rounded-lg border border-white/[0.06] bg-white/[0.02] p-3">
                   <div className="flex items-center justify-between mb-1">

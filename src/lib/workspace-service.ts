@@ -21,6 +21,13 @@ import { db } from "@/lib/firebase";
 // Types
 // ─────────────────────────────────────────────
 
+export interface KommoStage {
+  id: string;
+  name: string;
+  sort: number;
+  type: "regular" | "won" | "lost";
+}
+
 export interface Workspace {
   id: string;
   name: string;
@@ -31,6 +38,10 @@ export interface Workspace {
   metaAdAccountId?: string;
   metaAccessToken?: string;
   googleAdsCustomerId?: string;
+  kommoSubdomain?: string;
+  kommoAccessToken?: string;
+  kommoPipelineId?: string;
+  kommoStages?: KommoStage[];
   createdAt: Date;
   updatedAt: Date;
   color: string; // accent color for UI
@@ -38,7 +49,7 @@ export interface Workspace {
 }
 
 export interface WorkspacePlatform {
-  name: "hotmart" | "kiwify" | "eduzz";
+  name: "hotmart" | "kiwify" | "eduzz" | "kommo";
   enabled: boolean;
   webhookSecret?: string;
 }
@@ -50,6 +61,8 @@ export interface CreateWorkspaceInput {
   platforms?: WorkspacePlatform[];
   metaAdAccountId?: string;
   metaAccessToken?: string;
+  kommoSubdomain?: string;
+  kommoAccessToken?: string;
 }
 
 // ─────────────────────────────────────────────
@@ -73,6 +86,10 @@ function docToWorkspace(id: string, data: Record<string, unknown>): Workspace {
     metaAdAccountId: data.metaAdAccountId as string | undefined,
     metaAccessToken: data.metaAccessToken as string | undefined,
     googleAdsCustomerId: data.googleAdsCustomerId as string | undefined,
+    kommoSubdomain: data.kommoSubdomain as string | undefined,
+    kommoAccessToken: data.kommoAccessToken as string | undefined,
+    kommoPipelineId: data.kommoPipelineId as string | undefined,
+    kommoStages: data.kommoStages as KommoStage[] | undefined,
     createdAt: toDate(data.createdAt),
     updatedAt: toDate(data.updatedAt),
     color: (data.color as string) ?? "#5050F2",
@@ -149,10 +166,15 @@ export async function createWorkspace(
       { name: "hotmart", enabled: true },
       { name: "kiwify", enabled: true },
       { name: "eduzz", enabled: true },
+      { name: "kommo", enabled: false },
     ],
     metaAdAccountId: input.metaAdAccountId ?? "",
     metaAccessToken: input.metaAccessToken ?? "",
     googleAdsCustomerId: "",
+    kommoSubdomain: input.kommoSubdomain ?? "",
+    kommoAccessToken: input.kommoAccessToken ?? "",
+    kommoPipelineId: "",
+    kommoStages: [] as KommoStage[],
     color,
     initials,
     createdAt: serverTimestamp(),

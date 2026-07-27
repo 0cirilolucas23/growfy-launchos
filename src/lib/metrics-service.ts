@@ -3,6 +3,9 @@
  * Handles KPI calculations, reverse engineering, and webhook data aggregation.
  */
 
+import type { WebhookSource, WebhookEventType } from "./types";
+export type { WebhookSource, WebhookEventType };
+
 // ─────────────────────────────────────────────
 // Types & Interfaces
 // ─────────────────────────────────────────────
@@ -52,17 +55,6 @@ export interface WebhookEvent {
   status: "success" | "pending" | "failed" | "refunded";
   raw?: Record<string, unknown>;
 }
-
-export type WebhookSource = "hotmart" | "eduzz" | "kiwify" | "meta_ads" | "manual";
-
-export type WebhookEventType =
-  | "purchase"
-  | "refund"
-  | "subscription_start"
-  | "subscription_cancel"
-  | "subscription_renewal"
-  | "lead"
-  | "click";
 
 export interface ReverseEngineeringInputs {
   targetRevenue: number;
@@ -277,16 +269,15 @@ export function calculateAdMetrics(
 ): AdMetrics {
   const safeImpressions = Math.max(impressions, 1);
   const safeClicks = Math.max(clicks, 1);
-  const safeSpend = Math.max(spend, 0.01);
 
   return {
     spend,
     impressions,
     clicks,
-    ctr: (clicks / safeImpressions) * 100,
-    cpc: spend / safeClicks,
-    cpm: (spend / safeImpressions) * 1000,
-    roas: revenue / safeSpend,
+    ctr: impressions > 0 ? (clicks / safeImpressions) * 100 : 0,
+    cpc: spend > 0 && clicks > 0 ? spend / safeClicks : 0,
+    cpm: spend > 0 && impressions > 0 ? (spend / safeImpressions) * 1000 : 0,
+    roas: spend > 0 ? revenue / spend : 0,
     frequency,
   };
 }
@@ -412,4 +403,51 @@ export function generateMockEvents(count = 200): WebhookEvent[] {
   return events.sort(
     (a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()
   );
+}
+
+// ─────────────────────────────────────────────
+// Pipeline Funnel (CRM — Kommo)
+// ─────────────────────────────────────────────
+
+export interface FunnelStage {
+  stageId: string;
+  stageName: string;
+  count: number;
+  amount: number;
+}
+
+export interface PipelineStageRef {
+  id: string;
+  name: string;
+  sort: number;
+  type?: "regular" | "won" | "lost";
+}
+
+/**
+ * Cada doc em webhook_events com source="kommo" já representa o estado atual do lead
+ * (ID determinístico kommo_${leadId}). Não precisa agrupar por customerId — o count
+ * por stageId já é o retrato correto do funil naquele instante.
+ */
+export function buildPipelineFunnel(
+  events: WebhookEvent[],
+  stages: PipelineStageRef[]
+): FunnelStage[] {
+  const counts = new Map<string, number>();
+  const amounts = new Map<string, number>();
+
+  for (const e of events) {
+    const stageId = (e.raw as { stageId?: string } | undefined)?.stageId;
+    if (!stageId) continue;
+    counts.set(stageId, (counts.get(stageId) ?? 0) + 1);
+    amounts.set(stageId, (amounts.get(stageId) ?? 0) + (e.amount ?? 0));
+  }
+
+  return [...stages]
+    .sort((a, b) => a.sort - b.sort)
+    .map((s) => ({
+      stageId: s.id,
+      stageName: s.name,
+      count: counts.get(s.id) ?? 0,
+      amount: amounts.get(s.id) ?? 0,
+    }));
 }

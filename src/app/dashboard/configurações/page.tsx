@@ -94,6 +94,13 @@ export default function WorkspaceSettingsPage() {
   const [metaAccessToken, setMetaAccessToken] = useState("");
   const [googleAdsCustomerId, setGoogleAdsCustomerId] = useState("");
 
+  // Kommo
+  const [kommoEnabled, setKommoEnabled] = useState(false);
+  const [kommoSubdomain, setKommoSubdomain] = useState("");
+  const [kommoAccessToken, setKommoAccessToken] = useState("");
+  const [isSyncing, setIsSyncing] = useState(false);
+  const [syncResult, setSyncResult] = useState<string | null>(null);
+
   useEffect(() => {
     if (activeWorkspace) {
       setName(activeWorkspace.name);
@@ -101,6 +108,11 @@ export default function WorkspaceSettingsPage() {
       setMetaAdAccountId(activeWorkspace.metaAdAccountId ?? "");
       setMetaAccessToken(activeWorkspace.metaAccessToken ?? "");
       setGoogleAdsCustomerId(activeWorkspace.googleAdsCustomerId ?? "");
+      setKommoSubdomain(activeWorkspace.kommoSubdomain ?? "");
+      setKommoAccessToken(activeWorkspace.kommoAccessToken ?? "");
+      setKommoEnabled(
+        activeWorkspace.platforms?.some((p) => p.name === "kommo" && p.enabled) ?? false
+      );
     }
   }, [activeWorkspace]);
 
@@ -109,12 +121,21 @@ export default function WorkspaceSettingsPage() {
     setIsSaving(true);
     setError(null);
     try {
+      const existingPlatforms = activeWorkspace.platforms ?? [];
+      const hasKommo = existingPlatforms.some((p) => p.name === "kommo");
+      const nextPlatforms = hasKommo
+        ? existingPlatforms.map((p) => (p.name === "kommo" ? { ...p, enabled: kommoEnabled } : p))
+        : [...existingPlatforms, { name: "kommo" as const, enabled: kommoEnabled }];
+
       await updateWorkspace(activeWorkspace.id, {
         name: name.trim(),
         clientName: clientName.trim(),
         metaAdAccountId: metaAdAccountId.trim(),
         metaAccessToken: metaAccessToken.trim(),
         googleAdsCustomerId: googleAdsCustomerId.trim(),
+        kommoSubdomain: kommoSubdomain.trim(),
+        kommoAccessToken: kommoAccessToken.trim(),
+        platforms: nextPlatforms,
         initials: name.trim().split(" ").map((w) => w[0]).slice(0, 2).join("").toUpperCase(),
       });
       await refreshWorkspaces();
@@ -125,6 +146,27 @@ export default function WorkspaceSettingsPage() {
       console.error(err);
     } finally {
       setIsSaving(false);
+    }
+  }
+
+  async function handleSyncPipeline() {
+    if (!activeWorkspace) return;
+    setIsSyncing(true);
+    setSyncResult(null);
+    try {
+      const res = await fetch("/api/kommo/pipelines", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ workspaceId: activeWorkspace.id }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error ?? "Falha ao sincronizar");
+      setSyncResult(`✓ Funil "${data.pipelineName}" sincronizado (${data.stagesCount} etapas)`);
+      await refreshWorkspaces();
+    } catch (err) {
+      setSyncResult(`✗ ${err instanceof Error ? err.message : "Erro"}`);
+    } finally {
+      setIsSyncing(false);
     }
   }
 
@@ -140,6 +182,7 @@ export default function WorkspaceSettingsPage() {
     { id: "hotmart", name: "Hotmart", initial: "H" },
     { id: "kiwify", name: "Kiwify", initial: "K" },
     { id: "eduzz", name: "Eduzz", initial: "E" },
+    { id: "kommo", name: "Kommo", initial: "K" },
   ];
 
   return (
@@ -251,6 +294,102 @@ export default function WorkspaceSettingsPage() {
         <div className="rounded-lg border border-white/[0.06] bg-white/[0.02] p-3">
           <p className="text-[11px] text-white/25">
             🚧 Integração Google Ads em desenvolvimento.
+          </p>
+        </div>
+      </Section>
+
+      {/* Kommo (CRM) */}
+      <Section
+        title="Kommo (CRM de leads)"
+        description="Integração com pipeline de leads — habilita o Funil no menu lateral"
+      >
+        <div className="flex items-center justify-between rounded-lg border border-white/[0.06] bg-white/[0.02] px-3 py-2.5">
+          <div>
+            <p className="text-xs font-semibold text-white/70">Habilitar Kommo neste workspace</p>
+            <p className="text-[11px] text-white/25 mt-0.5">Ao ligar, aparece o item &quot;Funil de Leads&quot; no menu</p>
+          </div>
+          <button
+            type="button"
+            onClick={() => setKommoEnabled((v) => !v)}
+            className={cn(
+              "relative h-5 w-9 shrink-0 rounded-full border transition-all",
+              kommoEnabled
+                ? "border-[#00D861]/40 bg-[#00D861]/30"
+                : "border-white/10 bg-white/5"
+            )}
+          >
+            <span
+              className={cn(
+                "absolute top-0.5 h-3.5 w-3.5 rounded-full bg-white transition-all",
+                kommoEnabled ? "left-[18px]" : "left-0.5"
+              )}
+            />
+          </button>
+        </div>
+
+        <Field label="Subdomain" description="Ex: 'growfy' se sua conta é growfy.kommo.com">
+          <input type="text" value={kommoSubdomain}
+            onChange={(e) => setKommoSubdomain(e.target.value)}
+            placeholder="growfy"
+            className={inputClass} />
+        </Field>
+
+        <Field
+          label="Access Token (long-lived)"
+          description="Gere em Kommo → Configurações → Integrações → Criar integração"
+        >
+          <input type="password" value={kommoAccessToken}
+            onChange={(e) => setKommoAccessToken(e.target.value)}
+            placeholder="••••••••••••••••••••"
+            className={inputClass} />
+        </Field>
+
+        <div className="flex items-center gap-3">
+          <button
+            onClick={handleSyncPipeline}
+            disabled={isSyncing || !kommoSubdomain || !kommoAccessToken}
+            className="flex items-center gap-2 rounded-lg border border-white/[0.08] bg-white/[0.04] px-3 py-2 text-xs font-semibold text-white/70 hover:bg-white/[0.06] disabled:opacity-40"
+          >
+            {isSyncing ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RefreshCw className="h-3.5 w-3.5" />}
+            {isSyncing ? "Sincronizando..." : "Sincronizar funil"}
+          </button>
+          {syncResult && (
+            <p className={cn(
+              "text-[11px]",
+              syncResult.startsWith("✓") ? "text-[#00D861]" : "text-[#E85D22]"
+            )}>{syncResult}</p>
+          )}
+        </div>
+
+        {activeWorkspace.kommoStages && activeWorkspace.kommoStages.length > 0 && (
+          <div className="rounded-lg border border-white/[0.06] bg-white/[0.02] p-3 space-y-1">
+            <p className="text-[11px] font-semibold text-white/40 uppercase tracking-wider">
+              Etapas sincronizadas ({activeWorkspace.kommoStages.length})
+            </p>
+            <div className="flex flex-wrap gap-1.5">
+              {[...activeWorkspace.kommoStages]
+                .sort((a, b) => a.sort - b.sort)
+                .map((s) => (
+                  <span
+                    key={s.id}
+                    className={cn(
+                      "rounded-md border px-2 py-0.5 text-[10px] font-medium",
+                      s.type === "won" && "border-[#00D861]/30 bg-[#00D861]/8 text-[#00D861]",
+                      s.type === "lost" && "border-[#E85D22]/30 bg-[#E85D22]/8 text-[#E85D22]",
+                      s.type === "regular" && "border-white/10 bg-white/5 text-white/50"
+                    )}
+                  >
+                    {s.name}
+                  </span>
+                ))}
+            </div>
+          </div>
+        )}
+
+        <div className="rounded-lg border border-white/[0.06] bg-white/[0.02] p-3">
+          <p className="text-[11px] text-white/25 leading-relaxed">
+            📌 Salve as credenciais primeiro, depois clique em &quot;Sincronizar funil&quot; para
+            baixar as etapas do pipeline principal. O funil só funciona depois desse passo.
           </p>
         </div>
       </Section>

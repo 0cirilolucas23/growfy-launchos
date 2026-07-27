@@ -6,28 +6,16 @@
 
 import { getAdminDb } from "./firebase-admin";
 import { sendWebhookAlert } from "./email-service";
+import type { WebhookSource, WebhookEventType } from "./types";
 
-// ─────────────────────────────────────────────
-// Types
-// ─────────────────────────────────────────────
-
-export type WebhookSource = "hotmart" | "eduzz" | "kiwify";
-
-export type WebhookEventType =
-  | "purchase"
-  | "refund"
-  | "subscription_start"
-  | "subscription_cancel"
-  | "subscription_renewal"
-  | "abandoned_cart"
-  | "chargeback";
+export type { WebhookSource, WebhookEventType };
 
 export interface NormalizedWebhookEvent {
   id: string;
   workspaceId: string;
   source: WebhookSource;
   type: WebhookEventType;
-  status: "approved" | "pending" | "refunded" | "cancelled" | "chargeback";
+  status: "approved" | "pending" | "refunded" | "cancelled" | "chargeback" | "failed";
   amount: number;
   currency: string;
   customerId: string;
@@ -43,6 +31,9 @@ export interface NormalizedWebhookEvent {
   utmCampaign?: string;
   utmContent?: string;
   utmTerm?: string;
+  pipelineId?: string;
+  stageId?: string;
+  stageName?: string;
   raw: Record<string, unknown>;
 }
 
@@ -231,4 +222,126 @@ export function verifyKiwifySignature(body: string, signature: string, secret: s
     const expected = crypto.createHmac("sha256", secret).update(body).digest("hex");
     return crypto.timingSafeEqual(Buffer.from(signature), Buffer.from(expected));
   } catch { return false; }
+}
+
+export function verifyKommoSignature(body: string, signature: string, secret: string): boolean {
+  try {
+    const expected = crypto.createHmac("sha1", secret).update(body).digest("hex");
+    return crypto.timingSafeEqual(Buffer.from(signature), Buffer.from(expected));
+  } catch { return false; }
+}
+
+// ─────────────────────────────────────────────
+// Kommo Normalizer
+// ─────────────────────────────────────────────
+
+export interface KommoStageRef {
+  id: string;
+  name: string;
+  type: "regular" | "won" | "lost";
+}
+
+export interface KommoLeadInput {
+  id: number | string;
+  name?: string;
+  price?: number;
+  pipeline_id?: number | string;
+  status_id?: number | string;
+  created_at?: number | string;
+  updated_at?: number | string;
+  custom_fields_values?: Array<{
+    field_id?: number;
+    field_name?: string;
+    values?: Array<{ value?: unknown }>;
+  }> | null;
+  _embedded?: {
+    contacts?: Array<{
+      id?: number;
+      name?: string;
+      custom_fields_values?: Array<{
+        field_code?: string;
+        values?: Array<{ value?: string }>;
+      }> | null;
+    }>;
+  };
+}
+
+type KommoContact = NonNullable<NonNullable<KommoLeadInput["_embedded"]>["contacts"]>[number];
+
+function pickContactField(contact: KommoContact, code: "EMAIL" | "PHONE"): string {
+  const field = contact?.custom_fields_values?.find((f) => f.field_code === code);
+  return String(field?.values?.[0]?.value ?? "");
+}
+
+function pickCustomFieldNumeric(
+  lead: KommoLeadInput,
+  fieldName: string
+): number {
+  const field = lead.custom_fields_values?.find(
+    (f) => (f.field_name ?? "").toLowerCase() === fieldName.toLowerCase()
+  );
+  const raw = field?.values?.[0]?.value;
+  const parsed = typeof raw === "number" ? raw : parseFloat(String(raw ?? "0"));
+  return Number.isFinite(parsed) ? parsed : 0;
+}
+
+/**
+ * Normaliza um lead do Kommo (já enriquecido com contacts embutidos) em NormalizedWebhookEvent.
+ *
+ * ⚠️ TODO (verificação de runtime — spec item 4):
+ * Puxar 2-3 leads reais da etapa "Ganho" e checar se `lead.price` vem populado.
+ * Se sim, essa é a fonte primária (já é o que a função usa). Se não, o custom field
+ * "Venda" (usado como fallback aqui) é a fonte real. Se ambos vazios → o cliente
+ * não preenche valor em lugar nenhum ainda (problema de processo do cliente).
+ */
+export function normalizeKommo(
+  lead: KommoLeadInput,
+  workspaceId: string,
+  stages: KommoStageRef[]
+): NormalizedWebhookEvent {
+  const stageId = String(lead.status_id ?? "");
+  const stage = stages.find((s) => s.id === stageId);
+
+  const type: WebhookEventType =
+    stage?.type === "won" || stage?.type === "lost" ? "purchase" : "lead";
+  const status: NormalizedWebhookEvent["status"] =
+    stage?.type === "won" ? "approved"
+    : stage?.type === "lost" ? "failed"
+    : "pending";
+
+  const amount = Number(lead.price ?? 0) || pickCustomFieldNumeric(lead, "Venda");
+
+  const contact = lead._embedded?.contacts?.[0];
+  const customerName = String(contact?.name ?? lead.name ?? "");
+  const customerEmail = contact ? pickContactField(contact, "EMAIL") : "";
+  const customerPhone = contact ? pickContactField(contact, "PHONE") : "";
+  const customerId = customerEmail || String(contact?.id ?? lead.id);
+
+  const timestamp = lead.updated_at
+    ? new Date(Number(lead.updated_at) * 1000)
+    : lead.created_at
+      ? new Date(Number(lead.created_at) * 1000)
+      : new Date();
+
+  return {
+    id: `kommo_${lead.id}`,
+    workspaceId,
+    source: "kommo",
+    type,
+    status,
+    amount,
+    currency: "BRL",
+    customerId,
+    customerName,
+    customerEmail,
+    customerPhone,
+    productId: String(lead.pipeline_id ?? ""),
+    productName: stage?.name ?? "",
+    transactionId: String(lead.id),
+    timestamp,
+    pipelineId: String(lead.pipeline_id ?? ""),
+    stageId,
+    stageName: stage?.name,
+    raw: lead as unknown as Record<string, unknown>,
+  };
 }
