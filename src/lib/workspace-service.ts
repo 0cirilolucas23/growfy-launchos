@@ -28,6 +28,19 @@ export interface KommoStage {
   type: "regular" | "won" | "lost";
 }
 
+export interface KommoLossReasonMeta {
+  id: string;
+  name: string;
+}
+
+export interface KommoUserMeta {
+  id: string;
+  name: string;
+  email?: string;
+}
+
+export type WorkspaceMode = "sales" | "crm" | "hybrid";
+
 export interface Workspace {
   id: string;
   name: string;
@@ -35,6 +48,7 @@ export interface Workspace {
   ownerId: string;
   members: string[]; // Firebase UIDs
   platforms: WorkspacePlatform[];
+  mode: WorkspaceMode;
   metaAdAccountId?: string;
   metaAccessToken?: string;
   googleAdsCustomerId?: string;
@@ -42,6 +56,8 @@ export interface Workspace {
   kommoAccessToken?: string;
   kommoPipelineId?: string;
   kommoStages?: KommoStage[];
+  kommoLossReasons?: KommoLossReasonMeta[];
+  kommoUsers?: KommoUserMeta[];
   createdAt: Date;
   updatedAt: Date;
   color: string; // accent color for UI
@@ -59,6 +75,7 @@ export interface CreateWorkspaceInput {
   clientName: string;
   color?: string;
   platforms?: WorkspacePlatform[];
+  mode?: WorkspaceMode;
   metaAdAccountId?: string;
   metaAccessToken?: string;
   kommoSubdomain?: string;
@@ -75,6 +92,15 @@ function toDate(val: unknown): Date {
   return new Date();
 }
 
+function inferMode(data: Record<string, unknown>): WorkspaceMode {
+  const platforms = (data.platforms as WorkspacePlatform[]) ?? [];
+  const hasKommo = Boolean(data.kommoSubdomain) || platforms.some((p) => p.name === "kommo" && p.enabled);
+  const hasSales = platforms.some((p) => p.enabled && (p.name === "kiwify" || p.name === "hotmart" || p.name === "eduzz"));
+  if (hasKommo && !hasSales) return "crm";
+  if (hasKommo && hasSales) return "hybrid";
+  return "sales";
+}
+
 function docToWorkspace(id: string, data: Record<string, unknown>): Workspace {
   return {
     id,
@@ -83,6 +109,7 @@ function docToWorkspace(id: string, data: Record<string, unknown>): Workspace {
     ownerId: data.ownerId as string,
     members: (data.members as string[]) ?? [],
     platforms: (data.platforms as WorkspacePlatform[]) ?? [],
+    mode: (data.mode as WorkspaceMode | undefined) ?? inferMode(data),
     metaAdAccountId: data.metaAdAccountId as string | undefined,
     metaAccessToken: data.metaAccessToken as string | undefined,
     googleAdsCustomerId: data.googleAdsCustomerId as string | undefined,
@@ -90,6 +117,8 @@ function docToWorkspace(id: string, data: Record<string, unknown>): Workspace {
     kommoAccessToken: data.kommoAccessToken as string | undefined,
     kommoPipelineId: data.kommoPipelineId as string | undefined,
     kommoStages: data.kommoStages as KommoStage[] | undefined,
+    kommoLossReasons: data.kommoLossReasons as KommoLossReasonMeta[] | undefined,
+    kommoUsers: data.kommoUsers as KommoUserMeta[] | undefined,
     createdAt: toDate(data.createdAt),
     updatedAt: toDate(data.updatedAt),
     color: (data.color as string) ?? "#5050F2",
@@ -168,6 +197,7 @@ export async function createWorkspace(
       { name: "eduzz", enabled: true },
       { name: "kommo", enabled: false },
     ],
+    mode: input.mode ?? "sales",
     metaAdAccountId: input.metaAdAccountId ?? "",
     metaAccessToken: input.metaAccessToken ?? "",
     googleAdsCustomerId: "",

@@ -46,6 +46,26 @@ interface KommoPipelinesResponse {
   _embedded?: { pipelines?: KommoPipeline[] };
 }
 
+export interface KommoLossReason {
+  id: number;
+  name: string;
+  sort?: number;
+}
+
+export interface KommoUser {
+  id: number;
+  name: string;
+  email?: string;
+}
+
+interface KommoLossReasonsResponse {
+  _embedded?: { loss_reasons?: KommoLossReason[] };
+}
+
+interface KommoUsersResponse {
+  _embedded?: { users?: KommoUser[] };
+}
+
 // ─────────────────────────────────────────────
 // HTTP
 // ─────────────────────────────────────────────
@@ -125,6 +145,26 @@ export function toStagesForWorkspace(
     sort: s.sort ?? 0,
     type: s.id === 142 ? "won" : s.id === 143 ? "lost" : "regular",
   }));
+}
+
+// ─────────────────────────────────────────────
+// Loss reasons / Users (metadados pra traduzir IDs em nomes na UI)
+// ─────────────────────────────────────────────
+
+export async function fetchKommoLossReasons(
+  creds: KommoCredentials
+): Promise<KommoLossReason[]> {
+  const res = await kommoFetch<KommoLossReasonsResponse>(
+    creds,
+    "/leads/loss_reasons",
+    { limit: "250" }
+  );
+  return res._embedded?.loss_reasons ?? [];
+}
+
+export async function fetchKommoUsers(creds: KommoCredentials): Promise<KommoUser[]> {
+  const res = await kommoFetch<KommoUsersResponse>(creds, "/users", { limit: "250" });
+  return res._embedded?.users ?? [];
 }
 
 // ─────────────────────────────────────────────

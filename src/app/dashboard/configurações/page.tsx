@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect } from "react";
 import { useWorkspace } from "@/contexts/workspace-context";
-import { updateWorkspace } from "@/lib/workspace-service";
+import { updateWorkspace, type WorkspaceMode } from "@/lib/workspace-service";
 import {
   Settings, Save, Copy, Check, Loader2,
   Globe, Zap, RefreshCw,
@@ -90,6 +90,7 @@ export default function WorkspaceSettingsPage() {
   // Form state
   const [name, setName] = useState("");
   const [clientName, setClientName] = useState("");
+  const [mode, setMode] = useState<WorkspaceMode>("sales");
   const [metaAdAccountId, setMetaAdAccountId] = useState("");
   const [metaAccessToken, setMetaAccessToken] = useState("");
   const [googleAdsCustomerId, setGoogleAdsCustomerId] = useState("");
@@ -105,6 +106,7 @@ export default function WorkspaceSettingsPage() {
     if (activeWorkspace) {
       setName(activeWorkspace.name);
       setClientName(activeWorkspace.clientName);
+      setMode(activeWorkspace.mode ?? "sales");
       setMetaAdAccountId(activeWorkspace.metaAdAccountId ?? "");
       setMetaAccessToken(activeWorkspace.metaAccessToken ?? "");
       setGoogleAdsCustomerId(activeWorkspace.googleAdsCustomerId ?? "");
@@ -130,6 +132,7 @@ export default function WorkspaceSettingsPage() {
       await updateWorkspace(activeWorkspace.id, {
         name: name.trim(),
         clientName: clientName.trim(),
+        mode,
         metaAdAccountId: metaAdAccountId.trim(),
         metaAccessToken: metaAccessToken.trim(),
         googleAdsCustomerId: googleAdsCustomerId.trim(),
@@ -161,7 +164,23 @@ export default function WorkspaceSettingsPage() {
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error ?? "Falha ao sincronizar");
-      setSyncResult(`✓ Funil "${data.pipelineName}" sincronizado (${data.stagesCount} etapas)`);
+
+      // Sincroniza também loss_reasons + users no mesmo clique. Se falhar não é crítico —
+      // só afeta widgets secundários do modo CRM.
+      let metaMsg = "";
+      try {
+        const metaRes = await fetch("/api/kommo/metadata", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ workspaceId: activeWorkspace.id }),
+        });
+        const metaData = await metaRes.json();
+        if (metaRes.ok) {
+          metaMsg = ` · ${metaData.lossReasonsCount} motivos, ${metaData.usersCount} usuários`;
+        }
+      } catch { /* silencioso */ }
+
+      setSyncResult(`✓ Funil "${data.pipelineName}" sincronizado (${data.stagesCount} etapas)${metaMsg}`);
       await refreshWorkspaces();
     } catch (err) {
       setSyncResult(`✗ ${err instanceof Error ? err.message : "Erro"}`);
@@ -242,6 +261,37 @@ export default function WorkspaceSettingsPage() {
               className={inputClass} />
           </Field>
         </div>
+
+        <Field
+          label="Modo do Dashboard"
+          description="Vendas = e-commerce (Kiwify/Hotmart). CRM = pipeline de leads (Kommo). Híbrido = ambos."
+        >
+          <div className="grid grid-cols-3 gap-2">
+            {([
+              { value: "sales", label: "Vendas", hint: "Faturamento, ROAS, Top Produtos" },
+              { value: "crm", label: "CRM", hint: "Leads, funil, CPL, CAC" },
+              { value: "hybrid", label: "Híbrido", hint: "Ambos empilhados" },
+            ] as const).map((opt) => (
+              <button
+                key={opt.value}
+                type="button"
+                onClick={() => setMode(opt.value)}
+                className={cn(
+                  "rounded-xl border p-3 text-left transition-all",
+                  mode === opt.value
+                    ? "border-white bg-white/[0.08]"
+                    : "border-white/[0.07] bg-white/[0.02] hover:border-white/[0.15]"
+                )}
+              >
+                <p className={cn(
+                  "text-xs font-bold",
+                  mode === opt.value ? "text-white" : "text-white/60"
+                )}>{opt.label}</p>
+                <p className="mt-0.5 text-[10px] text-white/25 leading-tight">{opt.hint}</p>
+              </button>
+            ))}
+          </div>
+        </Field>
 
         {/* Workspace ID */}
         <Field label="ID do Workspace" description="Use este ID nas URLs dos webhooks">

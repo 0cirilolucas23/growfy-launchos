@@ -34,6 +34,8 @@ export interface NormalizedWebhookEvent {
   pipelineId?: string;
   stageId?: string;
   stageName?: string;
+  lossReasonId?: string;
+  responsibleUserId?: string;
   raw: Record<string, unknown>;
 }
 
@@ -247,6 +249,8 @@ export interface KommoLeadInput {
   price?: number;
   pipeline_id?: number | string;
   status_id?: number | string;
+  loss_reason_id?: number | string | null;
+  responsible_user_id?: number | string | null;
   created_at?: number | string;
   updated_at?: number | string;
   custom_fields_values?: Array<{
@@ -273,26 +277,11 @@ function pickContactField(contact: KommoContact, code: "EMAIL" | "PHONE"): strin
   return String(field?.values?.[0]?.value ?? "");
 }
 
-function pickCustomFieldNumeric(
-  lead: KommoLeadInput,
-  fieldName: string
-): number {
-  const field = lead.custom_fields_values?.find(
-    (f) => (f.field_name ?? "").toLowerCase() === fieldName.toLowerCase()
-  );
-  const raw = field?.values?.[0]?.value;
-  const parsed = typeof raw === "number" ? raw : parseFloat(String(raw ?? "0"));
-  return Number.isFinite(parsed) ? parsed : 0;
-}
-
 /**
  * Normaliza um lead do Kommo (já enriquecido com contacts embutidos) em NormalizedWebhookEvent.
  *
- * ⚠️ TODO (verificação de runtime — spec item 4):
- * Puxar 2-3 leads reais da etapa "Ganho" e checar se `lead.price` vem populado.
- * Se sim, essa é a fonte primária (já é o que a função usa). Se não, o custom field
- * "Venda" (usado como fallback aqui) é a fonte real. Se ambos vazios → o cliente
- * não preenche valor em lugar nenhum ainda (problema de processo do cliente).
+ * amount vem direto de `lead.price` (0 quando não preenchido). O modo CRM do dashboard
+ * não depende de amount — usa contagem de leads, funil, CAC e CPL derivados do Meta.
  */
 export function normalizeKommo(
   lead: KommoLeadInput,
@@ -309,7 +298,7 @@ export function normalizeKommo(
     : stage?.type === "lost" ? "failed"
     : "pending";
 
-  const amount = Number(lead.price ?? 0) || pickCustomFieldNumeric(lead, "Venda");
+  const amount = Number(lead.price ?? 0);
 
   const contact = lead._embedded?.contacts?.[0];
   const customerName = String(contact?.name ?? lead.name ?? "");
@@ -342,6 +331,8 @@ export function normalizeKommo(
     pipelineId: String(lead.pipeline_id ?? ""),
     stageId,
     stageName: stage?.name,
+    lossReasonId: lead.loss_reason_id != null ? String(lead.loss_reason_id) : undefined,
+    responsibleUserId: lead.responsible_user_id != null ? String(lead.responsible_user_id) : undefined,
     raw: lead as unknown as Record<string, unknown>,
   };
 }

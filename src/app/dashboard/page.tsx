@@ -9,9 +9,11 @@ import {
 import { RefreshCw, ArrowUpRight, ArrowDownRight, Wifi, WifiOff, Calendar, ChevronDown } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useMetrics, DateRange } from "@/hooks/use-metrics";
+import { useCrmMetrics, type CrmDateRange } from "@/hooks/use-crm-metrics";
 import { useAlerts } from "@/hooks/use-alerts";
 import { useWorkspace } from "@/contexts/workspace-context";
 import { formatCurrency, formatPercentage, formatNumber } from "@/lib/metrics-service";
+import { CrmOverview } from "@/components/crm-overview";
 import { cn } from "@/lib/utils";
 
 // ─── Sparkline ───
@@ -230,10 +232,25 @@ export default function DashboardPage() {
     return () => clearInterval(metaPoll);
   }, [activeWorkspace?.id, dateRange, activeSince]);
 
+  const mode = activeWorkspace?.mode ?? "sales";
+  const kommoStages = activeWorkspace?.kommoStages ?? [];
+  const hasKommoConfigured = Boolean(
+    activeWorkspace?.kommoSubdomain && activeWorkspace?.kommoAccessToken
+  );
+
   const { revenue, conversions, ads, chartData, topProducts, changes, isLoading, isRefreshing, isLive, lastUpdated, refresh, setDateRange: applyRange } = useMetrics({
     dateRange,
     sinceDate: activeSince,
     workspaceId: activeWorkspace?.id ?? null,
+  });
+
+  const crmMetrics = useCrmMetrics({
+    dateRange: dateRange as CrmDateRange,
+    sinceDate: activeSince,
+    workspaceId: mode !== "sales" ? activeWorkspace?.id ?? null : null,
+    stages: kommoStages,
+    lossReasonsMeta: activeWorkspace?.kommoLossReasons ?? [],
+    usersMeta: activeWorkspace?.kommoUsers ?? [],
   });
 
   // Checa alertas em background sempre que as métricas atualizarem
@@ -311,6 +328,18 @@ export default function DashboardPage() {
           </div>
         </div>
 
+        {/* CRM view — quando modo crm ou hybrid */}
+        {mode !== "sales" && (
+          <CrmOverview
+            data={crmMetrics}
+            stages={kommoStages}
+            hasKommoConfigured={hasKommoConfigured}
+          />
+        )}
+
+        {/* Sales view — quando modo sales ou hybrid */}
+        {mode !== "crm" && (
+        <>
         {/* KPIs */}
         <div className="grid grid-cols-2 gap-3 lg:grid-cols-3">
           {kpis.map((k) => <KPICard key={k.label} {...k} isLoading={isLoading} />)}
@@ -426,6 +455,8 @@ export default function DashboardPage() {
             </div>
           </div>
         </div>
+        </>
+        )}
       </div>
     </div>
   );
