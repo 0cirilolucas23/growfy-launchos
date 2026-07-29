@@ -20,6 +20,7 @@
  */
 import { NextRequest, NextResponse } from "next/server";
 import { getAdminDb } from "@/lib/firebase-admin";
+import { requireAuth } from "@/lib/api-auth";
 
 export async function GET(req: NextRequest) {
   const workspaceId = req.nextUrl.searchParams.get("workspace");
@@ -28,6 +29,9 @@ export async function GET(req: NextRequest) {
   if (!workspaceId) {
     return NextResponse.json({ error: "workspace obrigatório" }, { status: 400 });
   }
+
+  const auth = await requireAuth(req, { staffOnly: true });
+  if (!auth.ok) return auth.response;
 
   try {
     const db = getAdminDb();

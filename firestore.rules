@@ -1,0 +1,73 @@
+rules_version = '2';
+
+// ─────────────────────────────────────────────────────────────
+// Growfy LaunchOS — Firestore Security Rules
+//
+// Modelo: multi-tenant. Cada `workspace` representa 1 cliente.
+// - Frontend lê/escreve com o SDK do Firebase autenticado (uid do usuário Google).
+// - Writes de dados de negócio (webhook_events, alerts) passam pelo Admin SDK
+//   nos handlers /api/**, que bypassa as rules — por isso as rules bloqueiam
+//   write direto do cliente nessas coleções.
+// - Um usuário @growfy.com.br é "admin interno" e vê todos os workspaces.
+// ─────────────────────────────────────────────────────────────
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isGrowfyStaff() {
+      return isSignedIn()
+        && request.auth.token.email is string
+        && request.auth.token.email.matches('.*@growfy[.]com[.]br$');
+    }
+
+    function isWorkspaceMember(workspaceId) {
+      return isSignedIn()
+        && exists(/databases/$(database)/documents/workspaces/$(workspaceId))
+        && request.auth.uid in
+          get(/databases/$(database)/documents/workspaces/$(workspaceId)).data.members;
+    }
+
+    // ─── workspaces ─────────────────────────────────────────
+    // Leitura: membro do workspace OU staff Growfy.
+    // Criação: qualquer usuário logado (vira owner + member automaticamente).
+    // Atualização: só owner/staff (evita membros alterarem creds Kommo/Meta).
+    // Delete: só staff.
+    match /workspaces/{workspaceId} {
+      allow read: if isGrowfyStaff()
+                  || (isSignedIn() && request.auth.uid in resource.data.members);
+
+      allow create: if isSignedIn()
+                    && request.resource.data.ownerId == request.auth.uid
+                    && request.auth.uid in request.resource.data.members;
+
+      allow update: if isGrowfyStaff()
+                    || (isSignedIn() && request.auth.uid == resource.data.ownerId);
+
+      allow delete: if isGrowfyStaff();
+    }
+
+    // ─── webhook_events ────────────────────────────────────
+    // Leitura: membro do workspace referenciado no doc OU staff.
+    // Escrita: sempre negada — só via Admin SDK (server).
+    match /webhook_events/{eventId} {
+      allow read: if isGrowfyStaff() || isWorkspaceMember(resource.data.workspaceId);
+      allow write: if false;
+    }
+
+    // ─── workspaces/{id}/alerts ─────────────────────────────
+    // Subcoleção. Membro do workspace pode ler/escrever (é config, não dado
+    // sensível). O workspaceId vem do path — mais simples que checar no doc.
+    match /workspaces/{workspaceId}/alerts/{alertId} {
+      allow read, write: if isGrowfyStaff() || isWorkspaceMember(workspaceId);
+    }
+
+    // ─── qualquer outra coleção ─────────────────────────────
+    // Fecha por padrão. Coleção nova precisa de regra explícita aqui.
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

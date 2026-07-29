@@ -3,6 +3,7 @@
 import React, { useState, useEffect } from "react";
 import { useWorkspace } from "@/contexts/workspace-context";
 import { updateWorkspace, type WorkspaceMode } from "@/lib/workspace-service";
+import { apiFetch } from "@/lib/api-client";
 import {
   Settings, Save, Copy, Check, Loader2,
   Globe, Zap, RefreshCw,
@@ -157,7 +158,7 @@ export default function WorkspaceSettingsPage() {
     setIsSyncing(true);
     setSyncResult(null);
     try {
-      const res = await fetch("/api/kommo/pipelines", {
+      const res = await apiFetch("/api/kommo/pipelines", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ workspaceId: activeWorkspace.id }),
@@ -169,7 +170,7 @@ export default function WorkspaceSettingsPage() {
       // só afeta widgets secundários do modo CRM.
       let metaMsg = "";
       try {
-        const metaRes = await fetch("/api/kommo/metadata", {
+        const metaRes = await apiFetch("/api/kommo/metadata", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ workspaceId: activeWorkspace.id }),

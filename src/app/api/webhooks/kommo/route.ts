@@ -62,8 +62,8 @@ export async function POST(req: NextRequest) {
     const secret = process.env.WEBHOOK_SECRET_KOMMO;
     if (secret) {
       const signature = req.headers.get("x-signature") ?? "";
-      if (signature && !verifyKommoSignature(body, signature, secret)) {
-        console.warn("⚠️ [Kommo] Assinatura inválida");
+      if (!signature || !verifyKommoSignature(body, signature, secret)) {
+        console.warn("⚠️ [Kommo] Assinatura inválida ou ausente");
         return NextResponse.json({ error: "Invalid signature" }, { status: 401 });
       }
     }

@@ -13,8 +13,8 @@ export async function POST(req: NextRequest) {
 
     if (secret) {
       const signature = req.headers.get("x-hotmart-signature") ?? "";
-      if (signature && !verifyHotmartSignature(body, signature, secret)) {
-        console.warn("⚠️ [Hotmart] Assinatura inválida");
+      if (!signature || !verifyHotmartSignature(body, signature, secret)) {
+        console.warn("⚠️ [Hotmart] Assinatura inválida ou ausente");
         return NextResponse.json({ error: "Invalid signature" }, { status: 401 });
       }
     }

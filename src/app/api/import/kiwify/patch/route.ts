@@ -7,6 +7,7 @@
  */
 import { NextRequest, NextResponse } from "next/server";
 import { getAdminDb } from "@/lib/firebase-admin";
+import { requireAuth } from "@/lib/api-auth";
 
 export async function POST(req: NextRequest) {
   try {
@@ -19,6 +20,9 @@ export async function POST(req: NextRequest) {
     if (!workspaceId || !amountField) {
       return NextResponse.json({ error: "workspaceId e amountField são obrigatórios" }, { status: 400 });
     }
+
+    const auth = await requireAuth(req, { workspaceId });
+    if (!auth.ok) return auth.response;
 
     const db = getAdminDb();
     const snapshot = await db

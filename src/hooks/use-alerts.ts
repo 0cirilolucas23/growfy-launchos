@@ -6,6 +6,7 @@ import {
   doc, Timestamp,
 } from "firebase/firestore";
 import { db } from "@/lib/firebase";
+import { apiFetch } from "@/lib/api-client";
 import { formatCurrency } from "@/lib/metrics-service";
 
 // ─── Types ───
@@ -133,7 +134,7 @@ export function useAlerts(workspaceId: string | null) {
 
       // Dispara e-mail
       try {
-        await fetch("/api/alerts/notify", {
+        await apiFetch("/api/alerts/notify", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({

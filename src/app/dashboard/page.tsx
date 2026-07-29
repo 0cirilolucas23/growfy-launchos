@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useMemo } from "react";
 import {
   AreaChart, Area, BarChart, Bar,
   XAxis, YAxis, CartesianGrid, Tooltip,
@@ -14,6 +14,7 @@ import { useAlerts } from "@/hooks/use-alerts";
 import { useWorkspace } from "@/contexts/workspace-context";
 import { formatCurrency, formatPercentage, formatNumber } from "@/lib/metrics-service";
 import { CrmOverview } from "@/components/crm-overview";
+import { apiFetch } from "@/lib/api-client";
 import { cn } from "@/lib/utils";
 
 // ─── Sparkline ───
@@ -217,7 +218,7 @@ export default function DashboardPage() {
       const days = dateRange === "7d" ? 7 : dateRange === "14d" ? 14 : dateRange === "30d" ? 30 : 90;
       const since = activeSince ?? new Date(Date.now() - days * 86400000).toISOString().split("T")[0];
       const params = new URLSearchParams({ since, until, workspaceId: activeWorkspace.id });
-      fetch(`/api/meta-ads?${params}`)
+      apiFetch(`/api/meta-ads?${params}`)
         .then((r) => r.json())
         .then((data) => {
           if (data?.metrics?.leads) setMetaLeads(data.metrics.leads);
@@ -233,7 +234,18 @@ export default function DashboardPage() {
   }, [activeWorkspace?.id, dateRange, activeSince]);
 
   const mode = activeWorkspace?.mode ?? "sales";
-  const kommoStages = activeWorkspace?.kommoStages ?? [];
+  const kommoStages = useMemo(
+    () => activeWorkspace?.kommoStages ?? [],
+    [activeWorkspace?.kommoStages]
+  );
+  const kommoLossReasons = useMemo(
+    () => activeWorkspace?.kommoLossReasons ?? [],
+    [activeWorkspace?.kommoLossReasons]
+  );
+  const kommoUsers = useMemo(
+    () => activeWorkspace?.kommoUsers ?? [],
+    [activeWorkspace?.kommoUsers]
+  );
   const hasKommoConfigured = Boolean(
     activeWorkspace?.kommoSubdomain && activeWorkspace?.kommoAccessToken
   );
@@ -249,8 +261,8 @@ export default function DashboardPage() {
     sinceDate: activeSince,
     workspaceId: mode !== "sales" ? activeWorkspace?.id ?? null : null,
     stages: kommoStages,
-    lossReasonsMeta: activeWorkspace?.kommoLossReasons ?? [],
-    usersMeta: activeWorkspace?.kommoUsers ?? [],
+    lossReasonsMeta: kommoLossReasons,
+    usersMeta: kommoUsers,
   });
 
   // Checa alertas em background sempre que as métricas atualizarem

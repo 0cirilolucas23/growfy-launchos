@@ -1,5 +1,6 @@
 import { initializeApp, getApps, cert } from "firebase-admin/app";
 import { getFirestore } from "firebase-admin/firestore";
+import { getAuth } from "firebase-admin/auth";
 
 // Dotenv converts \n in double-quoted env values to actual newlines.
 // JSON.parse rejects actual newlines inside string literals.
@@ -40,7 +41,7 @@ function parseServiceAccount(raw: string): object {
   return JSON.parse(result);
 }
 
-export function getAdminDb() {
+function ensureApp() {
   if (!getApps().length) {
     const serviceAccount = parseServiceAccount(
       process.env.FIREBASE_ADMIN_SERVICE_ACCOUNT!
@@ -48,5 +49,14 @@ export function getAdminDb() {
     initializeApp({ credential: cert(serviceAccount) });
     getFirestore().settings({ ignoreUndefinedProperties: true });
   }
+}
+
+export function getAdminDb() {
+  ensureApp();
   return getFirestore();
+}
+
+export function getAdminAuth() {
+  ensureApp();
+  return getAuth();
 }

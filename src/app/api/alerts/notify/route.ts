@@ -1,7 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
+import { requireAuth } from "@/lib/api-auth";
 
 export async function POST(req: NextRequest) {
   try {
+    const auth = await requireAuth(req);
+    if (!auth.ok) return auth.response;
+
     const { metric, condition, threshold, currentValue, email } = await req.json() as {
       metric: string;
       condition: string;

@@ -12,6 +12,7 @@ import {
   getDocs,
 } from "firebase/firestore";
 import { db } from "@/lib/firebase";
+import { apiFetch } from "@/lib/api-client";
 import {
   WebhookEvent,
   RevenueMetrics,
@@ -266,8 +267,8 @@ export function useMetrics(options: UseMetricsOptions = {}): MetricsState & {
         if (workspaceId) { currentParams.set("workspaceId", workspaceId); prevParams.set("workspaceId", workspaceId); }
 
         const [currentResult, prevResult] = await Promise.allSettled([
-          fetch(`/api/meta-ads?${currentParams}`).then((r) => r.json()),
-          fetch(`/api/meta-ads?${prevParams}`).then((r) => r.json()),
+          apiFetch(`/api/meta-ads?${currentParams}`).then((r) => r.json()),
+          apiFetch(`/api/meta-ads?${prevParams}`).then((r) => r.json()),
         ]);
 
         if (currentResult.status === "fulfilled" && currentResult.value?.metrics) {

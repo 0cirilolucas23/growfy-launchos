@@ -8,6 +8,7 @@
  */
 import { NextRequest, NextResponse } from "next/server";
 import { getAdminDb } from "@/lib/firebase-admin";
+import { requireAuth } from "@/lib/api-auth";
 import { fetchAllKommoLeads } from "@/lib/kommo-api-service";
 import { normalizeKommo, type KommoStageRef } from "@/lib/webhook-service";
 
@@ -18,6 +19,9 @@ export async function GET(req: NextRequest) {
   if (!workspaceId) {
     return NextResponse.json({ error: "workspace obrigatório" }, { status: 400 });
   }
+
+  const auth = await requireAuth(req, { workspaceId });
+  if (!auth.ok) return auth.response;
 
   try {
     const db = getAdminDb();
@@ -40,6 +44,9 @@ export async function POST(req: NextRequest) {
     if (!workspaceId) {
       return NextResponse.json({ error: "workspaceId obrigatório" }, { status: 400 });
     }
+
+    const auth = await requireAuth(req, { workspaceId });
+    if (!auth.ok) return auth.response;
 
     const db = getAdminDb();
     const wsDoc = await db.collection("workspaces").doc(workspaceId).get();

@@ -7,6 +7,7 @@ import {
 import { Download, ArrowUpRight, ArrowDownRight } from "lucide-react";
 import { useMetrics, DateRange } from "@/hooks/use-metrics";
 import { useWorkspace } from "@/contexts/workspace-context";
+import { apiFetch } from "@/lib/api-client";
 import { formatCurrency, formatPercentage, formatNumber } from "@/lib/metrics-service";
 import { cn } from "@/lib/utils";
 
@@ -80,7 +81,7 @@ export default function RelatoriosPage() {
     const days = dateRange === "7d" ? 7 : dateRange === "14d" ? 14 : dateRange === "30d" ? 30 : 90;
     const since = activeSince ?? new Date(Date.now() - days * 86400000).toISOString().split("T")[0];
     const params = new URLSearchParams({ since, until, workspaceId: activeWorkspace.id });
-    fetch(`/api/meta-ads?${params}`)
+    apiFetch(`/api/meta-ads?${params}`)
       .then((r) => r.json())
       .then((data) => {
         if (data?.campaigns) setCampaigns(data.campaigns.slice(0, 5));

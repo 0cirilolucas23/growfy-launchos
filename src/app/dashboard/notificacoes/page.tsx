@@ -9,6 +9,7 @@ import {
   useAlerts, METRIC_META,
   AlertMetric, AlertCondition,
 } from "@/hooks/use-alerts";
+import { apiFetch } from "@/lib/api-client";
 import { cn } from "@/lib/utils";
 
 // ─── Helpers ───
@@ -53,7 +54,7 @@ export default function NotificacoesPage() {
     if (!workspaceId) return;
     const until = new Date().toISOString().split("T")[0];
     const since = new Date(Date.now() - 30 * 86400000).toISOString().split("T")[0];
-    fetch(`/api/meta-ads?since=${since}&until=${until}&workspaceId=${workspaceId}`)
+    apiFetch(`/api/meta-ads?since=${since}&until=${until}&workspaceId=${workspaceId}`)
       .then((r) => r.json())
       .then((d) => { if (d?.metrics?.spend) setMetaSpend(d.metrics.spend); })
       .catch(() => {});

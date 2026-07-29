@@ -26,8 +26,12 @@ yarn-debug.log*
 yarn-error.log*
 
 # local env files
+.env
 .env.local
 .env*.local
+
+# Claude Code local settings (contém tokens/permissoes gravadas em uso)
+.claude/settings.local.json
 
 # vercel
 .vercel

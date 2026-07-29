@@ -3,6 +3,7 @@
 import { useState, useEffect } from "react";
 import { Download, AlertTriangle, CheckCircle, Loader2, Database } from "lucide-react";
 import { useWorkspace } from "@/contexts/workspace-context";
+import { apiFetch } from "@/lib/api-client";
 
 interface ImportResult {
   imported: number;
@@ -37,7 +38,7 @@ export default function ImportarPage() {
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), 5000);
 
-    fetch(`/api/import/kiwify?workspace=${workspaceId}`, {
+    apiFetch(`/api/import/kiwify?workspace=${workspaceId}`, {
       signal: controller.signal,
     })
       .then((r) => r.json())
@@ -57,7 +58,7 @@ export default function ImportarPage() {
     setKiwify((prev) => ({ ...prev, isImporting: true, error: null, lastResult: null }));
 
     try {
-      const res = await fetch("/api/import/kiwify", {
+      const res = await apiFetch("/api/import/kiwify", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ workspaceId }),

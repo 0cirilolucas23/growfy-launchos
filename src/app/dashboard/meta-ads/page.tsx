@@ -7,6 +7,7 @@ import { RefreshCw, Wifi, WifiOff, Calendar, ChevronDown } from "lucide-react";
 import { collection, query, where, getDocs, Timestamp } from "firebase/firestore";
 import { db } from "@/lib/firebase";
 import { useWorkspace } from "@/contexts/workspace-context";
+import { apiFetch } from "@/lib/api-client";
 import type { MetaAdsDashboardData, MetaDateRange } from "@/lib/meta-ads-service";
 import { formatCurrency, formatNumber, formatPercentage } from "@/lib/metrics-service";
 import { cn } from "@/lib/utils";
@@ -408,7 +409,7 @@ export default function MetaAdsPage() {
         until: range.until,
         ...(workspaceId ? { workspaceId } : {}),
       });
-      const res = await fetch(`/api/meta-ads?${params}`);
+      const res = await apiFetch(`/api/meta-ads?${params}`);
       const json = (await res.json()) as MetaAdsDashboardData & { error?: string };
       if (json.error) throw new Error(json.error);
       setApiData(json);
@@ -439,6 +440,7 @@ export default function MetaAdsPage() {
   }, [workspaceId]);
 
   useEffect(() => {
+    if (!workspaceId) return;
     loadData(dateRange);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [workspaceId]);

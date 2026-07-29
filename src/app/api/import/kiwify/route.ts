@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { fetchAllKiwifyOrders, normalizeKiwifyOrder, getOrderId } from "@/lib/kiwify-api-service";
 import { getAdminDb } from "@/lib/firebase-admin";
+import { requireAuth } from "@/lib/api-auth";
 
 export const maxDuration = 300;
 
@@ -13,6 +14,9 @@ export const maxDuration = 300;
     if (!workspaceId) {
       return NextResponse.json({ error: "workspace obrigatório" }, { status: 400 });
     }
+
+    const auth = await requireAuth(req, { workspaceId });
+    if (!auth.ok) return auth.response;
 
     try {
       const db = getAdminDb();
@@ -52,6 +56,9 @@ export const maxDuration = 300;
       if (!workspaceId) {
         return NextResponse.json({ error: "workspaceId obrigatório" }, { status: 400 });
       }
+
+      const auth = await requireAuth(req, { workspaceId });
+      if (!auth.ok) return auth.response;
 
       console.log(`🔄 [Kiwify Import] Iniciando para workspace: ${workspaceId}`);
 

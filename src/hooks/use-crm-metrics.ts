@@ -10,6 +10,7 @@ import {
   getDocs,
 } from "firebase/firestore";
 import { db } from "@/lib/firebase";
+import { apiFetch } from "@/lib/api-client";
 import {
   WebhookEvent,
   buildPipelineFunnel,
@@ -204,7 +205,7 @@ export function useCrmMetrics(options: UseCrmMetricsOptions): CrmMetricsState & 
       let meta: MetaSlice = EMPTY_META;
       try {
         const params = new URLSearchParams({ since, until, workspaceId });
-        const res = await fetch(`/api/meta-ads?${params}`);
+        const res = await apiFetch(`/api/meta-ads?${params}`);
         const json = await res.json();
         if (json.metrics) {
           const m = json.metrics;

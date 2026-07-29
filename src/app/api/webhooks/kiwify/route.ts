@@ -13,8 +13,8 @@ export async function POST(req: NextRequest) {
 
     if (secret) {
       const signature = req.headers.get("x-kiwify-signature") ?? "";
-      if (signature && !verifyKiwifySignature(body, signature, secret)) {
-        console.warn("⚠️ [Kiwify] Assinatura inválida");
+      if (!signature || !verifyKiwifySignature(body, signature, secret)) {
+        console.warn("⚠️ [Kiwify] Assinatura inválida ou ausente");
         return NextResponse.json({ error: "Invalid signature" }, { status: 401 });
       }
     }

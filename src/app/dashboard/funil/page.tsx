@@ -6,6 +6,7 @@ import { cn } from "@/lib/utils";
 import { collection, query, where, getDocs, Timestamp } from "firebase/firestore";
 import { db } from "@/lib/firebase";
 import { useWorkspace } from "@/contexts/workspace-context";
+import { apiFetch } from "@/lib/api-client";
 import {
   buildPipelineFunnel,
   formatCurrency,
@@ -93,7 +94,7 @@ export default function FunilPage() {
     setIsImporting(true);
     setImportResult(null);
     try {
-      const res = await fetch("/api/import/kommo", {
+      const res = await apiFetch("/api/import/kommo", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ workspaceId: activeWorkspace.id }),

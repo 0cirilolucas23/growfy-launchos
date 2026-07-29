@@ -6,6 +6,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { fetchMetaAdsDashboard } from "@/lib/meta-ads-service";
 import type { MetaDateRange, MetaCredentials } from "@/lib/meta-ads-service";
 import { getAdminDb } from "@/lib/firebase-admin";
+import { requireAuth } from "@/lib/api-auth";
 
 export async function GET(req: NextRequest) {
   try {
@@ -17,6 +18,9 @@ export async function GET(req: NextRequest) {
     if (!since || !until) {
       return NextResponse.json({ error: "since e until são obrigatórios" }, { status: 400 });
     }
+
+    const auth = await requireAuth(req, { workspaceId: workspaceId ?? undefined });
+    if (!auth.ok) return auth.response;
 
     const dateRange: MetaDateRange = { since, until };
 
