@@ -395,12 +395,14 @@ export default function MetaAdsPage() {
   const [isLive, setIsLive] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [notConfigured, setNotConfigured] = useState(false);
   const [dateRange, setDateRange] = useState<MetaDateRange>(getPresetDates("30d"));
   const [filters, setFilters] = useState<FilterState>({ level: "campaign", search: "", minRoas: "", minSpend: "" });
 
   const loadData = useCallback(async (range: MetaDateRange) => {
     setIsLoading(true);
     setError(null);
+    setNotConfigured(false);
 
     // Meta Ads
     try {
@@ -410,7 +412,13 @@ export default function MetaAdsPage() {
         ...(workspaceId ? { workspaceId } : {}),
       });
       const res = await apiFetch(`/api/meta-ads?${params}`);
-      const json = (await res.json()) as MetaAdsDashboardData & { error?: string };
+      const json = (await res.json()) as MetaAdsDashboardData & { error?: string; code?: string };
+      if (json.code === "meta_not_configured") {
+        setNotConfigured(true);
+        setApiData(null);
+        setIsLive(false);
+        return;
+      }
       if (json.error) throw new Error(json.error);
       setApiData(json);
       setIsLive(true);
@@ -598,8 +606,19 @@ export default function MetaAdsPage() {
 
         <DateRangePicker onChange={handleDateChange} />
 
+        {notConfigured && (
+          <div className="rounded-xl border border-[#FAE125]/20 bg-[#FAE125]/5 p-5">
+            <p className="text-sm font-semibold text-[#FAE125]">Meta Ads não configurado neste workspace</p>
+            <p className="mt-1 text-xs text-white/40">
+              Vá em <span className="text-white/70">Configurações → Meta Ads</span>, preencha o
+              ID da conta de anúncios (formato <code className="text-white/50">act_XXXXX</code>) e
+              o Access Token. Sem isso, este workspace não puxa dados do Meta.
+            </p>
+          </div>
+        )}
+
         {/* KPIs */}
-        {isLoading ? (
+        {notConfigured ? null : isLoading ? (
           <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
             {[...Array(7)].map((_, i) => <div key={i} className="h-20 animate-pulse rounded-xl bg-white/[0.04]" />)}
           </div>
@@ -646,11 +665,13 @@ export default function MetaAdsPage() {
         )}
 
         {/* Filters + Table */}
-        <div className="rounded-xl border border-white/[0.07] bg-white/[0.02] p-5 space-y-4">
-          <h2 className="text-sm font-bold text-white">Análise detalhada</h2>
-          <Filters filters={filters} onChange={setFilters} campaigns={apiData?.campaigns.map((c) => c.name) ?? []} />
-          {isLoading ? <div className="h-40 animate-pulse rounded-lg bg-white/[0.04]" /> : <MetaTable rows={getTableRows()} />}
-        </div>
+        {!notConfigured && (
+          <div className="rounded-xl border border-white/[0.07] bg-white/[0.02] p-5 space-y-4">
+            <h2 className="text-sm font-bold text-white">Análise detalhada</h2>
+            <Filters filters={filters} onChange={setFilters} campaigns={apiData?.campaigns.map((c) => c.name) ?? []} />
+            {isLoading ? <div className="h-40 animate-pulse rounded-lg bg-white/[0.04]" /> : <MetaTable rows={getTableRows()} />}
+          </div>
+        )}
       </div>
     </div>
   );

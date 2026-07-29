@@ -1,6 +1,9 @@
 /**
  * Growfy LaunchOS — Meta Ads API Route
- * ✅ Multi-workspace: lê metaAccessToken e metaAdAccountId do workspace no Firestore
+ * ✅ Multi-workspace: lê metaAccessToken e metaAdAccountId do workspace no Firestore.
+ * Sem fallback pra env vars — workspace precisa ter creds próprias pra evitar vazamento
+ * cross-cliente (uma conta de anúncios de teste como padrão apareceria em qualquer
+ * workspace sem creds).
  */
 import { NextRequest, NextResponse } from "next/server";
 import { fetchMetaAdsDashboard } from "@/lib/meta-ads-service";
@@ -18,39 +21,36 @@ export async function GET(req: NextRequest) {
     if (!since || !until) {
       return NextResponse.json({ error: "since e until são obrigatórios" }, { status: 400 });
     }
-
-    const auth = await requireAuth(req, { workspaceId: workspaceId ?? undefined });
-    if (!auth.ok) return auth.response;
-
-    const dateRange: MetaDateRange = { since, until };
-
-    // ✅ FIX: busca credenciais do workspace específico
-    let credentials: MetaCredentials | undefined;
-
-    if (workspaceId) {
-      try {
-        const db = getAdminDb();
-        const workspaceDoc = await db.collection("workspaces").doc(workspaceId).get();
-
-        if (workspaceDoc.exists) {
-          const data = workspaceDoc.data() as Record<string, unknown>;
-          const wsToken = data?.metaAccessToken as string | undefined;
-          const wsAccountId = data?.metaAdAccountId as string | undefined;
-
-          if (wsToken && wsAccountId) {
-            // Workspace tem credenciais próprias — usa elas
-            credentials = { token: wsToken, accountId: wsAccountId };
-          }
-          // Se não tem credenciais, vai cair no fallback das env vars (padrão do Meta)
-        }
-      } catch (err) {
-        console.warn("[meta-ads route] Erro ao buscar workspace:", err);
-        // Continua com env vars como fallback
-      }
+    if (!workspaceId) {
+      return NextResponse.json({ error: "workspaceId obrigatório" }, { status: 400 });
     }
 
-    const data = await fetchMetaAdsDashboard(dateRange, credentials);
-    return NextResponse.json(data);
+    const auth = await requireAuth(req, { workspaceId });
+    if (!auth.ok) return auth.response;
+
+    const workspaceDoc = await getAdminDb().collection("workspaces").doc(workspaceId).get();
+    if (!workspaceDoc.exists) {
+      return NextResponse.json({ error: "Workspace não encontrado" }, { status: 404 });
+    }
+
+    const data = workspaceDoc.data() as Record<string, unknown>;
+    const wsToken = data?.metaAccessToken as string | undefined;
+    const wsAccountId = data?.metaAdAccountId as string | undefined;
+
+    if (!wsToken || !wsAccountId) {
+      return NextResponse.json(
+        {
+          error: "Meta Ads não configurado neste workspace",
+          code: "meta_not_configured",
+        },
+        { status: 400 }
+      );
+    }
+
+    const credentials: MetaCredentials = { token: wsToken, accountId: wsAccountId };
+    const dateRange: MetaDateRange = { since, until };
+    const dashboard = await fetchMetaAdsDashboard(dateRange, credentials);
+    return NextResponse.json(dashboard);
   } catch (error) {
     console.error("[meta-ads route]", error);
     return NextResponse.json(
