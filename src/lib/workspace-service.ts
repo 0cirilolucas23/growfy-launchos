@@ -58,6 +58,9 @@ export interface Workspace {
   kommoStages?: KommoStage[];
   kommoLossReasons?: KommoLossReasonMeta[];
   kommoUsers?: KommoUserMeta[];
+  kommoSheetId?: string; // Google Sheets ID que o Make popula com leads da Kommo
+  kommoSheetLastSyncAt?: Date;
+  kommoSheetLastSyncCount?: number;
   createdAt: Date;
   updatedAt: Date;
   color: string; // accent color for UI
@@ -80,6 +83,7 @@ export interface CreateWorkspaceInput {
   metaAccessToken?: string;
   kommoSubdomain?: string;
   kommoAccessToken?: string;
+  kommoSheetId?: string;
 }
 
 // ─────────────────────────────────────────────
@@ -119,6 +123,9 @@ function docToWorkspace(id: string, data: Record<string, unknown>): Workspace {
     kommoStages: data.kommoStages as KommoStage[] | undefined,
     kommoLossReasons: data.kommoLossReasons as KommoLossReasonMeta[] | undefined,
     kommoUsers: data.kommoUsers as KommoUserMeta[] | undefined,
+    kommoSheetId: data.kommoSheetId as string | undefined,
+    kommoSheetLastSyncAt: data.kommoSheetLastSyncAt ? toDate(data.kommoSheetLastSyncAt) : undefined,
+    kommoSheetLastSyncCount: data.kommoSheetLastSyncCount as number | undefined,
     createdAt: toDate(data.createdAt),
     updatedAt: toDate(data.updatedAt),
     color: (data.color as string) ?? "#5050F2",

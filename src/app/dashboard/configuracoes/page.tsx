@@ -103,6 +103,12 @@ export default function WorkspaceSettingsPage() {
   const [isSyncing, setIsSyncing] = useState(false);
   const [syncResult, setSyncResult] = useState<string | null>(null);
 
+  // Kommo via Google Sheets
+  const [kommoSheetId, setKommoSheetId] = useState("");
+  const [isSyncingSheet, setIsSyncingSheet] = useState(false);
+  const [sheetSyncResult, setSheetSyncResult] = useState<string | null>(null);
+  const gcpServiceAccountEmail = process.env.NEXT_PUBLIC_GOOGLE_SA_EMAIL ?? "";
+
   useEffect(() => {
     if (activeWorkspace) {
       setName(activeWorkspace.name);
@@ -113,6 +119,7 @@ export default function WorkspaceSettingsPage() {
       setGoogleAdsCustomerId(activeWorkspace.googleAdsCustomerId ?? "");
       setKommoSubdomain(activeWorkspace.kommoSubdomain ?? "");
       setKommoAccessToken(activeWorkspace.kommoAccessToken ?? "");
+      setKommoSheetId(activeWorkspace.kommoSheetId ?? "");
       setKommoEnabled(
         activeWorkspace.platforms?.some((p) => p.name === "kommo" && p.enabled) ?? false
       );
@@ -139,6 +146,7 @@ export default function WorkspaceSettingsPage() {
         googleAdsCustomerId: googleAdsCustomerId.trim(),
         kommoSubdomain: kommoSubdomain.trim(),
         kommoAccessToken: kommoAccessToken.trim(),
+        kommoSheetId: kommoSheetId.trim(),
         platforms: nextPlatforms,
         initials: name.trim().split(" ").map((w) => w[0]).slice(0, 2).join("").toUpperCase(),
       });
@@ -187,6 +195,29 @@ export default function WorkspaceSettingsPage() {
       setSyncResult(`✗ ${err instanceof Error ? err.message : "Erro"}`);
     } finally {
       setIsSyncing(false);
+    }
+  }
+
+  async function handleSyncSheet() {
+    if (!activeWorkspace) return;
+    setIsSyncingSheet(true);
+    setSheetSyncResult(null);
+    try {
+      const res = await apiFetch("/api/sync/kommo-sheet", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ workspaceId: activeWorkspace.id }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error ?? "Falha ao sincronizar");
+      setSheetSyncResult(
+        `✓ ${data.processed} novos/atualizados · ${data.skipped} sem mudança · ${data.errors} erros (${data.totalRows} linhas)`
+      );
+      await refreshWorkspaces();
+    } catch (err) {
+      setSheetSyncResult(`✗ ${err instanceof Error ? err.message : "Erro"}`);
+    } finally {
+      setIsSyncingSheet(false);
     }
   }
 
@@ -442,6 +473,89 @@ export default function WorkspaceSettingsPage() {
             📌 Salve as credenciais primeiro, depois clique em &quot;Sincronizar funil&quot; para
             baixar as etapas do pipeline principal. O funil só funciona depois desse passo.
           </p>
+        </div>
+      </Section>
+
+      {/* Kommo via Google Sheets (Make) */}
+      <Section
+        title="Kommo via Google Sheets"
+        description="Alternativa sem plano API Kommo: Make popula uma planilha, o dash lê dela"
+      >
+        <Field
+          label="Google Sheet ID"
+          description="Cole o ID da planilha (parte entre /d/ e /edit da URL)"
+        >
+          <input
+            type="text"
+            value={kommoSheetId}
+            onChange={(e) => setKommoSheetId(e.target.value)}
+            placeholder="1AbCdEfGhIjKlMnOpQrStUvWxYz1234567890"
+            className={inputClass}
+          />
+        </Field>
+
+        {gcpServiceAccountEmail && (
+          <Field
+            label="Compartilhe a planilha com esta conta"
+            description="Adicione este email como Leitor na planilha do Google (botão Compartilhar)"
+          >
+            <div className="flex items-center gap-2 rounded-xl border border-white/[0.06] bg-white/[0.02] px-4 py-3">
+              <code className="flex-1 truncate text-[11px] text-white/50 font-mono">
+                {gcpServiceAccountEmail}
+              </code>
+              <CopyButton value={gcpServiceAccountEmail} />
+            </div>
+          </Field>
+        )}
+
+        <div className="flex items-center gap-3">
+          <button
+            onClick={handleSyncSheet}
+            disabled={isSyncingSheet || !kommoSheetId}
+            className="flex items-center gap-2 rounded-lg border border-white/[0.08] bg-white/[0.04] px-3 py-2 text-xs font-semibold text-white/70 hover:bg-white/[0.06] disabled:opacity-40"
+          >
+            {isSyncingSheet ? (
+              <Loader2 className="h-3.5 w-3.5 animate-spin" />
+            ) : (
+              <RefreshCw className="h-3.5 w-3.5" />
+            )}
+            {isSyncingSheet ? "Sincronizando..." : "Sincronizar agora"}
+          </button>
+          {sheetSyncResult && (
+            <p
+              className={cn(
+                "text-[11px]",
+                sheetSyncResult.startsWith("✓") ? "text-[#00D861]" : "text-[#E85D22]"
+              )}
+            >
+              {sheetSyncResult}
+            </p>
+          )}
+        </div>
+
+        {activeWorkspace.kommoSheetLastSyncAt && (
+          <div className="rounded-lg border border-white/[0.06] bg-white/[0.02] p-3">
+            <p className="text-[11px] text-white/40">
+              Último sync:{" "}
+              <span className="text-white/60">
+                {new Date(activeWorkspace.kommoSheetLastSyncAt).toLocaleString("pt-BR")}
+              </span>{" "}
+              · <span className="text-white/40">{activeWorkspace.kommoSheetLastSyncCount ?? 0} leads processados</span>
+            </p>
+          </div>
+        )}
+
+        <div className="rounded-lg border border-white/[0.06] bg-white/[0.02] p-3 space-y-1.5">
+          <p className="text-[11px] font-semibold text-white/50">Como configurar</p>
+          <ol className="list-decimal list-inside space-y-0.5 text-[11px] text-white/30 leading-relaxed">
+            <li>Planilha com aba <code className="text-white/50">Kommo_Leads</code></li>
+            <li>Header (linha 1) com estas colunas: <code className="text-white/50">lead_id, nome, pipeline, etapa, status_anterior, responsavel, valor, origem, contato_nome, contato_telefone, contato_email, tags, tipo_evento, criado_em, atualizado_em, resultado</code></li>
+            <li>Coluna <code className="text-white/50">resultado</code> aceita: <code className="text-white/50">aberto</code>, <code className="text-white/50">ganho</code>, <code className="text-white/50">perdido</code></li>
+            <li>Compartilhe a planilha com o email da Service Account (Leitor basta)</li>
+            <li>Cole o ID aqui e salve</li>
+            <li>Configure o cenário no Make: Kommo → Get Lead → Update Row nesta planilha</li>
+            <li>Sync automático a cada 15 min. Botão acima força imediato</li>
+          </ol>
         </div>
       </Section>
 

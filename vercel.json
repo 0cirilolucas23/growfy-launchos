@@ -1,0 +1,8 @@
+{
+  "crons": [
+    {
+      "path": "/api/sync/kommo-sheet-all",
+      "schedule": "*/15 * * * *"
+    }
+  ]
+}
