@@ -554,7 +554,7 @@ export default function WorkspaceSettingsPage() {
             <li>Compartilhe a planilha com o email da Service Account (Leitor basta)</li>
             <li>Cole o ID aqui e salve</li>
             <li>Configure o cenário no Make: Kommo → Get Lead → Update Row nesta planilha</li>
-            <li>Sync automático a cada 15 min. Botão acima força imediato</li>
+            <li>Sync automático 1x/dia (6h da manhã). Botão acima força imediato</li>
           </ol>
         </div>
       </Section>
