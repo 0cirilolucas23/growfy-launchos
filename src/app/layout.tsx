@@ -9,7 +9,7 @@ const inter = Inter({ subsets: ["latin"] });
 
 export const metadata: Metadata = {
   title: "Growfy LaunchOS",
-  description: "Dashboard inteligente para gestão de lançamentos digitais",
+  description: "Dashboard inteligente para gestão de produtos digitais",
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
