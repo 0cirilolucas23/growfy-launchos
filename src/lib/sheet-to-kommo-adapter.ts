@@ -88,6 +88,21 @@ function normalizeResultado(value: string): "aberto" | "ganho" | "perdido" {
   return "aberto";
 }
 
+/**
+ * Fallback: quando a coluna `resultado` está vazia, inferimos pelo nome da
+ * etapa. Cobre padrões típicos do Kommo em pt-br e en.
+ *   "Fechado - ganho" / "Sale won" → ganho
+ *   "Fechado - perdido" / "Sale lost" / "Descartado" → perdido
+ *   qualquer outro → aberto
+ */
+function inferResultadoFromEtapa(etapa: string): "aberto" | "ganho" | "perdido" {
+  const v = normalizeHeader(etapa);
+  if (!v) return "aberto";
+  if (/(ganh|won|convert|conclu[ií]d|fechad[ao].*ganh)/i.test(v)) return "ganho";
+  if (/(perd|lost|descart|cancelad|nao.*converteu)/i.test(v)) return "perdido";
+  return "aberto";
+}
+
 export interface SheetAdapterResult {
   event: NormalizedWebhookEvent;
   updatedAtIso: string;
@@ -105,7 +120,11 @@ export function rowToEvent(
   const leadId = getCell(row, headerIdx.lead_id);
   if (!leadId) return null;
 
-  const resultado = normalizeResultado(getCell(row, headerIdx.resultado));
+  const etapaNome = getCell(row, headerIdx.etapa);
+  const resultadoRaw = getCell(row, headerIdx.resultado);
+  const resultado = resultadoRaw
+    ? normalizeResultado(resultadoRaw)
+    : inferResultadoFromEtapa(etapaNome);
   const status: NormalizedWebhookEvent["status"] =
     resultado === "ganho" ? "approved" : resultado === "perdido" ? "failed" : "pending";
   const type: NormalizedWebhookEvent["type"] =
@@ -120,7 +139,6 @@ export function rowToEvent(
   const contactPhone = getCell(row, headerIdx.contato_telefone);
   const customerId = contactEmail || `kommo_${leadId}`;
 
-  const etapaNome = getCell(row, headerIdx.etapa);
   const pipelineNome = getCell(row, headerIdx.pipeline);
   const responsavelNome = getCell(row, headerIdx.responsavel);
 
