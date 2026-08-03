@@ -16,6 +16,50 @@ import { buildHeaderIndex, rowToEvent } from "@/lib/sheet-to-kommo-adapter";
 import { processWebhookEvent } from "@/lib/webhook-service";
 import { getAdminDb } from "@/lib/firebase-admin";
 import { requireAuth } from "@/lib/api-auth";
+import type { KommoStage } from "@/lib/workspace-service";
+
+/**
+ * Infere o tipo de uma etapa (won/lost/regular) pelo nome, com regex tolerante
+ * a padrões comuns em pt-br. Mesmas regras usadas em inferResultadoFromEtapa
+ * no adapter.
+ */
+function inferStageType(name: string): KommoStage["type"] {
+  const v = name
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[̀-ͯ]/g, "")
+    .trim();
+  if (!v) return "regular";
+  if (/(ganh|won|convert|conclu[ií]d|fechad[ao].*ganh)/i.test(v)) return "won";
+  if (/(perd|lost|descart|cancelad|nao.*converteu)/i.test(v)) return "lost";
+  return "regular";
+}
+
+/**
+ * Deriva a lista de etapas únicas presentes nas linhas processadas.
+ * Ordem de sort segue a ordem em que apareceram na planilha.
+ */
+function deriveStagesFromRows(
+  rows: string[][],
+  headerIdx: ReturnType<typeof buildHeaderIndex>
+): KommoStage[] {
+  const seen = new Map<string, KommoStage>();
+  let sort = 0;
+  const etapaCol = headerIdx.etapa;
+  if (etapaCol < 0) return [];
+  for (const row of rows) {
+    const raw = etapaCol < row.length ? String(row[etapaCol] ?? "").trim() : "";
+    if (!raw) continue;
+    if (seen.has(raw)) continue;
+    seen.set(raw, {
+      id: raw,
+      name: raw,
+      sort: sort++,
+      type: inferStageType(raw),
+    });
+  }
+  return Array.from(seen.values());
+}
 
 export const maxDuration = 60;
 
@@ -97,10 +141,17 @@ export async function syncWorkspaceKommoSheet(workspaceId: string): Promise<Sync
     }
   }
 
-  await db.collection("workspaces").doc(workspaceId).update({
+  // Deriva etapas únicas da própria planilha (não depende de API Kommo)
+  const derivedStages = deriveStagesFromRows(dataRows, headerIdx);
+
+  const updatePayload: Record<string, unknown> = {
     kommoSheetLastSyncAt: new Date(),
     kommoSheetLastSyncCount: processed,
-  });
+  };
+  if (derivedStages.length > 0) {
+    updatePayload.kommoStages = derivedStages;
+  }
+  await db.collection("workspaces").doc(workspaceId).update(updatePayload);
 
   return {
     ok: true,
@@ -109,6 +160,9 @@ export async function syncWorkspaceKommoSheet(workspaceId: string): Promise<Sync
     processed,
     skipped,
     errors,
+    message: derivedStages.length > 0
+      ? `${derivedStages.length} etapas do funil sincronizadas`
+      : undefined,
   };
 }
 
