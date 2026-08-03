@@ -1,5 +1,8 @@
 "use client";
 
+import Lottie from "lottie-react";
+import loginAnimation from "@/animations/login.json";
+import IconBranco from "@/icons/IconBranco.svg";
 import React, { useState } from "react";
 import { useRouter } from "next/navigation";
 import { Eye, EyeOff, Loader2 } from "lucide-react";
@@ -14,19 +17,6 @@ import { auth } from "@/lib/firebase";
 import { cn } from "@/lib/utils";
 
 type Mode = "login" | "signup" | "reset";
-
-const circles = [
-  { size: 200, top: "2%",  left: "42%", opacity: 0.22 },
-  { size: 140, top: "14%", left: "58%", opacity: 0.16 },
-  { size: 110, top: "24%", left: "28%", opacity: 0.14 },
-  { size: 170, top: "34%", left: "52%", opacity: 0.20 },
-  { size: 95,  top: "46%", left: "34%", opacity: 0.12 },
-  { size: 150, top: "54%", left: "60%", opacity: 0.18 },
-  { size: 120, top: "64%", left: "24%", opacity: 0.15 },
-  { size: 180, top: "72%", left: "48%", opacity: 0.20 },
-  { size: 100, top: "84%", left: "36%", opacity: 0.13 },
-  { size: 130, top: "90%", left: "56%", opacity: 0.16 },
-];
 
 export default function LoginPage() {
   const router = useRouter();
@@ -145,54 +135,63 @@ export default function LoginPage() {
   const labelClass = "block text-xs font-semibold uppercase tracking-wider text-[#08080A]/50 mb-1.5";
 
   return (
+
+    
     <div className="flex min-h-screen p-4">
       {/* Left panel */}
       <div
-        className="relative hidden lg:flex lg:w-[52%] flex-col justify-between overflow-hidden p-12 rounded-2xl"
+        className="relative hidden lg:flex lg:w-[52%] flex-col xl:flex-row gap-8 overflow-hidden p-12 rounded-2xl"
         style={{ background: "linear-gradient(135deg, #120800 0%, #08080A 50%, #0A0814 100%)" }}
       >
-        <div className="absolute left-1/3 top-1/3 h-64 w-64 rounded-2xl bg-[#E85D22]/8 blur-3xl" />
-        <div className="absolute right-1/4 bottom-1/3 h-48 w-48 rounded-2xl bg-[#5050F2]/6 blur-3xl" />
+        <div className="pointer-events-none absolute left-1/3 top-1/3 h-64 w-64 rounded-2xl bg-[#E85D22]/8 blur-3xl" />
+        <div className="pointer-events-none absolute right-1/4 bottom-1/3 h-48 w-48 rounded-2xl bg-[#5050F2]/6 blur-3xl" />
 
-        {circles.map((c, i) => (
-          <div key={i} className="absolute rounded-full border"
-            style={{
-              width: c.size, height: c.size,
-              top: c.top, left: c.left,
-              borderColor: `rgba(232, 93, 34, ${c.opacity})`,
-              transform: "translate(-50%, -50%)",
-            }}
-          />
-        ))}
-
-        <div className="relative z-10 flex items-center gap-2.5">
-          <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-[#5050F2]">
-            <span className="text-xs font-black text-white">G</span>
+        {/* Text column */}
+        <div className="relative z-10 flex flex-1 flex-col justify-between min-w-0">
+          
+          <div className="flex items-center gap-2.5">
+          <IconBranco className="h-10 w-10" aria-label="Logo" />
           </div>
-          <span className="text-base font-bold text-white tracking-tight">Growfy</span>
+
+          <div className="space-y-5 my-10 xl:my-0">
+            <p className="text-xs font-bold uppercase tracking-[0.25em] text-[#9e9efd]">Launch.OS</p>
+            <h1 className="text-6xl font-semibold leading-[1.05] text-white">
+              Inteligência<br />para seus<br />
+              <span className="bg-gradient-to-r from-[#f7f8f8] to-[#a5a5a5] text-transparent bg-clip-text inline-block">
+                Produtos.
+              </span>
+            </h1>
+            <p className="text-sm leading-relaxed text-white/35 max-w-xs">
+              Centralize Meta Ads, Google Ads, CRM & Plataformas de infoprodutos em um único lugar.
+              Decisões com dados, não com achismos.
+            </p>
+          </div>
+
+          <div className="flex gap-10">
+            {[{ v: "Diversas", l: "Integrações" }, { v: "Dados", l: "Ao vivo" }, { v: "Simulações", l: "Instantâneas" }].map((s) => (
+              <div key={s.l}>
+                <p className="text-xl font-black text-white">{s.v}</p>
+                <p className="text-xs text-white/30 mt-0.5">{s.l}</p>
+              </div>
+            ))}
+          </div>
         </div>
 
-        <div className="relative z-10 space-y-5">
-          <p className="text-xs font-bold uppercase tracking-[0.25em] text-[#5050F2]">LaunchOS</p>
-          <h1 className="text-5xl font-semibold leading-[1.05] text-white">
-            Inteligência<br />para seus<br />
-            <span className="bg-gradient-to-r from-[#f7f8f8] to-[#a5a5a5] text-transparent bg-clip-text inline-block">
-              lançamentos.
-            </span>
-          </h1>
-          <p className="text-sm leading-relaxed text-white/35 max-w-xs">
-            Centralize Meta Ads, Google Ads, Hotmart, Eduzz e Kiwify.
-            Decisões com dados, não com achismos.
-          </p>
-        </div>
-
-        <div className="relative z-10 flex gap-10">
-          {[{ v: "5+", l: "Integrações" }, { v: "100%", l: "Tempo real" }, { v: "∞", l: "Simulações" }].map((s) => (
-            <div key={s.l}>
-              <p className="text-2xl font-black text-white">{s.v}</p>
-              <p className="text-xs text-white/30 mt-0.5">{s.l}</p>
-            </div>
-          ))}
+        {/* Animation column */}
+        <div className="relative z-10 flex flex-1 items-center justify-center xl:justify-end min-h-[220px]">
+          <div className="relative w-full max-w-[520px]">
+            <Lottie
+              animationData={loginAnimation}
+              loop
+              className="w-full h-auto opacity-90"
+            />
+            {/* Mask over potential Jitter watermark (bottom-right of the anim) */}
+            <div
+              aria-hidden
+              className="pointer-events-none absolute bottom-1 right-1 h-7 w-24 rounded-md blur-sm"
+              style={{ background: "#0A0814" }}
+            />
+          </div>
         </div>
       </div>
 
