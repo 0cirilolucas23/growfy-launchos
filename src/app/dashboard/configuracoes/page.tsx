@@ -198,7 +198,7 @@ export default function WorkspaceSettingsPage() {
     }
   }
 
-  async function handleSyncSheet() {
+  async function handleSyncSheet(force = false) {
     if (!activeWorkspace) return;
     setIsSyncingSheet(true);
     setSheetSyncResult(null);
@@ -206,12 +206,13 @@ export default function WorkspaceSettingsPage() {
       const res = await apiFetch("/api/sync/kommo-sheet", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ workspaceId: activeWorkspace.id }),
+        body: JSON.stringify({ workspaceId: activeWorkspace.id, force }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error ?? "Falha ao sincronizar");
+      const suffix = data.message ? ` · ${data.message}` : "";
       setSheetSyncResult(
-        `✓ ${data.processed} novos/atualizados · ${data.skipped} sem mudança · ${data.errors} erros (${data.totalRows} linhas)`
+        `✓ ${data.processed} novos/atualizados · ${data.skipped} sem mudança · ${data.errors} erros (${data.totalRows} linhas)${suffix}`
       );
       await refreshWorkspaces();
     } catch (err) {
@@ -508,9 +509,9 @@ export default function WorkspaceSettingsPage() {
           </Field>
         )}
 
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-3 flex-wrap">
           <button
-            onClick={handleSyncSheet}
+            onClick={() => handleSyncSheet(false)}
             disabled={isSyncingSheet || !kommoSheetId}
             className="flex items-center gap-2 rounded-lg border border-white/[0.08] bg-white/[0.04] px-3 py-2 text-xs font-semibold text-white/70 hover:bg-white/[0.06] disabled:opacity-40"
           >
@@ -520,6 +521,15 @@ export default function WorkspaceSettingsPage() {
               <RefreshCw className="h-3.5 w-3.5" />
             )}
             {isSyncingSheet ? "Sincronizando..." : "Sincronizar agora"}
+          </button>
+          <button
+            onClick={() => handleSyncSheet(true)}
+            disabled={isSyncingSheet || !kommoSheetId}
+            className="flex items-center gap-2 rounded-lg border border-[#E85D22]/30 bg-[#E85D22]/8 px-3 py-2 text-xs font-semibold text-[#E85D22]/80 hover:bg-[#E85D22]/15 disabled:opacity-40"
+            title="Ignora dedup e reprocessa todas as linhas. Use quando corrigir bug e precisar regravar leads antigos."
+          >
+            <RefreshCw className="h-3.5 w-3.5" />
+            Ressincronizar tudo
           </button>
           {sheetSyncResult && (
             <p

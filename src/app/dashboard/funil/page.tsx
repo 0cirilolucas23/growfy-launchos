@@ -64,6 +64,7 @@ export default function FunilPage() {
           raw: {
             stageId: (data.stageId as string) ?? "",
             stageName: (data.stageName as string) ?? "",
+            productName: (data.productName as string) ?? "",
           },
         };
       });

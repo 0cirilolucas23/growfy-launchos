@@ -435,11 +435,19 @@ export function buildPipelineFunnel(
   const counts = new Map<string, number>();
   const amounts = new Map<string, number>();
 
+  // Mapa auxiliar: stage.name → stage.id (pra casar por nome quando stageId vazio)
+  const nameToId = new Map<string, string>();
+  for (const s of stages) nameToId.set(s.name, s.id);
+
   for (const e of events) {
-    const stageId = (e.raw as { stageId?: string } | undefined)?.stageId;
-    if (!stageId) continue;
-    counts.set(stageId, (counts.get(stageId) ?? 0) + 1);
-    amounts.set(stageId, (amounts.get(stageId) ?? 0) + (e.amount ?? 0));
+    const raw = (e.raw ?? {}) as { stageId?: string; stageName?: string; productName?: string };
+    // Ordem de fallback: stageId → stageName (via lookup) → productName (via lookup)
+    let stageKey = raw.stageId;
+    if (!stageKey && raw.stageName) stageKey = nameToId.get(raw.stageName) ?? raw.stageName;
+    if (!stageKey && raw.productName) stageKey = nameToId.get(raw.productName) ?? raw.productName;
+    if (!stageKey) continue;
+    counts.set(stageKey, (counts.get(stageKey) ?? 0) + 1);
+    amounts.set(stageKey, (amounts.get(stageKey) ?? 0) + (e.amount ?? 0));
   }
 
   return [...stages]

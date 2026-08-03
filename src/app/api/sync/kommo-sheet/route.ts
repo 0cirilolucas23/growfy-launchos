@@ -77,8 +77,12 @@ interface SyncOutcome {
 
 /**
  * Sync core. Não faz auth — chamador precisa autorizar.
+ * @param force se true, ignora dedup e reprocessa todas as linhas
  */
-export async function syncWorkspaceKommoSheet(workspaceId: string): Promise<SyncOutcome> {
+export async function syncWorkspaceKommoSheet(
+  workspaceId: string,
+  force = false
+): Promise<SyncOutcome> {
   const db = getAdminDb();
   const wsDoc = await db.collection("workspaces").doc(workspaceId).get();
   if (!wsDoc.exists) throw new Error("Workspace não encontrado");
@@ -118,19 +122,21 @@ export async function syncWorkspaceKommoSheet(workspaceId: string): Promise<Sync
         skipped++;
         continue;
       }
-      const existingDoc = await db.collection("webhook_events").doc(adapted.event.id).get();
-      if (existingDoc.exists) {
-        const existing = existingDoc.data() as Record<string, unknown>;
-        const existingTs = existing.timestamp;
-        const existingMs = existingTs instanceof Date
-          ? existingTs.getTime()
-          : existingTs && typeof (existingTs as { toMillis?: () => number }).toMillis === "function"
-            ? (existingTs as { toMillis: () => number }).toMillis()
-            : 0;
-        const rowMs = adapted.updatedAtIso ? Date.parse(adapted.updatedAtIso) : 0;
-        if (rowMs && existingMs && rowMs <= existingMs) {
-          skipped++;
-          continue;
+      if (!force) {
+        const existingDoc = await db.collection("webhook_events").doc(adapted.event.id).get();
+        if (existingDoc.exists) {
+          const existing = existingDoc.data() as Record<string, unknown>;
+          const existingTs = existing.timestamp;
+          const existingMs = existingTs instanceof Date
+            ? existingTs.getTime()
+            : existingTs && typeof (existingTs as { toMillis?: () => number }).toMillis === "function"
+              ? (existingTs as { toMillis: () => number }).toMillis()
+              : 0;
+          const rowMs = adapted.updatedAtIso ? Date.parse(adapted.updatedAtIso) : 0;
+          if (rowMs && existingMs && rowMs <= existingMs) {
+            skipped++;
+            continue;
+          }
         }
       }
       await processWebhookEvent(adapted.event);
@@ -168,14 +174,14 @@ export async function syncWorkspaceKommoSheet(workspaceId: string): Promise<Sync
 
 export async function POST(req: NextRequest) {
   try {
-    const body = (await req.json().catch(() => ({}))) as { workspaceId?: string };
+    const body = (await req.json().catch(() => ({}))) as { workspaceId?: string; force?: boolean };
     const workspaceId = body.workspaceId;
     if (!workspaceId) {
       return NextResponse.json({ error: "workspaceId obrigatório" }, { status: 400 });
     }
     const auth = await requireAuth(req, { workspaceId });
     if (!auth.ok) return auth.response;
-    const result = await syncWorkspaceKommoSheet(workspaceId);
+    const result = await syncWorkspaceKommoSheet(workspaceId, Boolean(body.force));
     return NextResponse.json(result);
   } catch (error) {
     console.error("[sync/kommo-sheet POST]", error);
