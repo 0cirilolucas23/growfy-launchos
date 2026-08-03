@@ -1,7 +1,10 @@
 /**
  * Growfy LaunchOS — Google Sheets Service
- * Lê planilhas via Service Account (server-only). Requer env vars:
- *   GOOGLE_SA_CLIENT_EMAIL, GOOGLE_SA_PRIVATE_KEY
+ * Lê planilhas via Service Account (server-only). Aceita:
+ *   Opção 1 (recomendada, à prova de erro):
+ *     GOOGLE_SA_JSON_B64 = base64 do arquivo JSON inteiro da SA
+ *   Opção 2 (legado):
+ *     GOOGLE_SA_CLIENT_EMAIL + GOOGLE_SA_PRIVATE_KEY
  *
  * A planilha alvo precisa estar compartilhada com o email da SA como Viewer.
  */
@@ -35,23 +38,90 @@ function normalizePrivateKey(raw: string): string {
   return key;
 }
 
-function getAuth() {
+interface SAJson {
+  client_email: string;
+  private_key: string;
+}
+
+function loadFromJsonB64(): SAJson | null {
+  const b64 = process.env.GOOGLE_SA_JSON_B64;
+  if (!b64) return null;
+  try {
+    const json = Buffer.from(b64.trim(), "base64").toString("utf-8");
+    const parsed = JSON.parse(json) as SAJson;
+    if (!parsed.client_email || !parsed.private_key) {
+      throw new Error("JSON não contém client_email/private_key");
+    }
+    return parsed;
+  } catch (err) {
+    throw new Error(
+      `GOOGLE_SA_JSON_B64 inválido: ${err instanceof Error ? err.message : String(err)}`
+    );
+  }
+}
+
+function loadFromSeparateEnv(): SAJson | null {
   const email = process.env.GOOGLE_SA_CLIENT_EMAIL;
   const rawKey = process.env.GOOGLE_SA_PRIVATE_KEY;
-  if (!email || !rawKey) {
-    throw new Error("Google Service Account não configurada (GOOGLE_SA_CLIENT_EMAIL / GOOGLE_SA_PRIVATE_KEY)");
-  }
+  if (!email || !rawKey) return null;
   const privateKey = normalizePrivateKey(rawKey);
   if (!privateKey.includes("BEGIN PRIVATE KEY") || !privateKey.includes("END PRIVATE KEY")) {
     throw new Error(
-      "GOOGLE_SA_PRIVATE_KEY inválida: não contém marcadores BEGIN/END PRIVATE KEY. Cole a chave completa incluindo -----BEGIN PRIVATE KEY----- e -----END PRIVATE KEY-----."
+      "GOOGLE_SA_PRIVATE_KEY inválida: não contém marcadores BEGIN/END PRIVATE KEY."
+    );
+  }
+  return { client_email: email, private_key: privateKey };
+}
+
+function getAuth() {
+  const creds = loadFromJsonB64() ?? loadFromSeparateEnv();
+  if (!creds) {
+    throw new Error(
+      "Google Service Account não configurada. Defina GOOGLE_SA_JSON_B64 (recomendado) ou GOOGLE_SA_CLIENT_EMAIL + GOOGLE_SA_PRIVATE_KEY."
     );
   }
   return new google.auth.JWT({
-    email,
-    key: privateKey,
+    email: creds.client_email,
+    key: creds.private_key,
     scopes: ["https://www.googleapis.com/auth/spreadsheets.readonly"],
   });
+}
+
+/**
+ * Retorna metadados seguros da chave configurada (não expõe a chave em si).
+ * Uso: endpoint de diagnóstico.
+ */
+export function diagnoseCredentials() {
+  const b64 = process.env.GOOGLE_SA_JSON_B64;
+  const email = process.env.GOOGLE_SA_CLIENT_EMAIL;
+  const rawKey = process.env.GOOGLE_SA_PRIVATE_KEY;
+
+  const out: Record<string, unknown> = {
+    hasJsonB64: Boolean(b64),
+    hasSeparateVars: Boolean(email && rawKey),
+    resolvedFrom: b64 ? "GOOGLE_SA_JSON_B64" : email && rawKey ? "SEPARATE_VARS" : "NONE",
+  };
+
+  try {
+    const creds = loadFromJsonB64() ?? loadFromSeparateEnv();
+    if (creds) {
+      const key = creds.private_key;
+      out.clientEmail = creds.client_email;
+      out.privateKey = {
+        length: key.length,
+        hasBeginMarker: key.includes("BEGIN PRIVATE KEY"),
+        hasEndMarker: key.includes("END PRIVATE KEY"),
+        realNewlineCount: (key.match(/\n/g) ?? []).length,
+        literalBackslashN: rawKey ? rawKey.includes("\\n") : false,
+        startsWith: key.slice(0, 30),
+        endsWith: key.slice(-30),
+      };
+    }
+  } catch (err) {
+    out.error = err instanceof Error ? err.message : String(err);
+  }
+
+  return out;
 }
 
 export async function getSheetRows({ sheetId, range }: SheetRange): Promise<string[][]> {
