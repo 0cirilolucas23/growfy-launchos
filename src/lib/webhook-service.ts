@@ -36,6 +36,7 @@ export interface NormalizedWebhookEvent {
   stageName?: string;
   lossReasonId?: string;
   responsibleUserId?: string;
+  updatedAt?: Date; // usado apenas pra dedup; graficos usam timestamp
   raw: Record<string, unknown>;
 }
 

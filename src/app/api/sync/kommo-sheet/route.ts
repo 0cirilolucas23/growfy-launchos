@@ -126,11 +126,12 @@ export async function syncWorkspaceKommoSheet(
         const existingDoc = await db.collection("webhook_events").doc(adapted.event.id).get();
         if (existingDoc.exists) {
           const existing = existingDoc.data() as Record<string, unknown>;
-          const existingTs = existing.timestamp;
-          const existingMs = existingTs instanceof Date
-            ? existingTs.getTime()
-            : existingTs && typeof (existingTs as { toMillis?: () => number }).toMillis === "function"
-              ? (existingTs as { toMillis: () => number }).toMillis()
+          // Dedup usa updatedAt (fallback pra timestamp em docs antigos)
+          const existingUpd = existing.updatedAt ?? existing.timestamp;
+          const existingMs = existingUpd instanceof Date
+            ? existingUpd.getTime()
+            : existingUpd && typeof (existingUpd as { toMillis?: () => number }).toMillis === "function"
+              ? (existingUpd as { toMillis: () => number }).toMillis()
               : 0;
           const rowMs = adapted.updatedAtIso ? Date.parse(adapted.updatedAtIso) : 0;
           if (rowMs && existingMs && rowMs <= existingMs) {

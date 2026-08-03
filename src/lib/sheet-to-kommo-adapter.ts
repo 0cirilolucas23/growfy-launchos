@@ -132,7 +132,10 @@ export function rowToEvent(
 
   const createdAt = parseDate(getCell(row, headerIdx.criado_em));
   const updatedAtStr = getCell(row, headerIdx.atualizado_em);
-  const updatedAt = parseDate(updatedAtStr) ?? createdAt ?? new Date();
+  const updatedAt = parseDate(updatedAtStr);
+  // timestamp = data que o lead entrou no Kommo (usado em graficos/filtros).
+  // updatedAt fica em campo separado, so pro dedup.
+  const timestamp = createdAt ?? updatedAt ?? new Date();
 
   const contactEmail = getCell(row, headerIdx.contato_email);
   const contactName = getCell(row, headerIdx.contato_nome);
@@ -157,7 +160,8 @@ export function rowToEvent(
     productId: pipelineNome,
     productName: etapaNome,
     transactionId: leadId,
-    timestamp: updatedAt,
+    timestamp,
+    updatedAt,
     utmSource: getCell(row, headerIdx.origem) || undefined,
     pipelineId: pipelineNome,
     stageId: etapaNome,
