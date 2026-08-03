@@ -68,9 +68,44 @@ function getCell(row: string[], idx: number): string {
   return v == null ? "" : String(v).trim();
 }
 
+/**
+ * Aceita:
+ *   - ISO: 2026-08-03T14:30:00Z, 2026-08-03
+ *   - Brasileiro: 03/08/2026, 03/08/2026 14:30, 03/08/2026 14:30:00
+ *   - Com traço: 03-08-2026 14:30
+ *   - Unix timestamp: 1722692400 (segundos) ou 1722692400000 (millis)
+ */
 function parseDate(value: string): Date | undefined {
   if (!value) return undefined;
-  const ms = Date.parse(value);
+  const v = value.trim();
+
+  // Unix timestamp puro
+  if (/^\d{10,13}$/.test(v)) {
+    const num = Number(v);
+    const ms = v.length === 10 ? num * 1000 : num;
+    return new Date(ms);
+  }
+
+  // Brasileiro: dd/MM/yyyy [HH:mm[:ss]]
+  const brMatch = v.match(
+    /^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})(?:[ T](\d{1,2}):(\d{2})(?::(\d{2}))?)?$/
+  );
+  if (brMatch) {
+    const [, dd, mm, yyyy, HH = "0", MI = "0", SS = "0"] = brMatch;
+    // Trata como horário local (mesma timezone do usuário)
+    const d = new Date(
+      Number(yyyy),
+      Number(mm) - 1,
+      Number(dd),
+      Number(HH),
+      Number(MI),
+      Number(SS)
+    );
+    return Number.isNaN(d.getTime()) ? undefined : d;
+  }
+
+  // ISO / outros formatos reconhecidos pelo engine
+  const ms = Date.parse(v);
   return Number.isNaN(ms) ? undefined : new Date(ms);
 }
 
