@@ -11,6 +11,7 @@ import { cn } from "@/lib/utils";
 import { logout } from "@/lib/auth-service";
 import { useWorkspace } from "@/contexts/workspace-context";
 import { useAuth } from "@/contexts/auth-context";
+import IcoDark from "@/icons/icoDark.svg";
 
 function MetaIcon({ className }: { className?: string }) {
   return (
@@ -106,9 +107,10 @@ export function Sidebar() {
   return (
     <aside className="flex h-screen w-[200px] shrink-0 flex-col border-r border-white/[0.06] bg-[#08080A]">
       <div className="flex items-center gap-2.5 px-4 h-14 border-b border-white/[0.06]">
-        <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-white shrink-0">
+        <IcoDark className="h-6 w-6" aria-label="Logo" />
+        {/*<div className="flex h-7 w-7 items-center justify-center rounded-lg bg-white shrink-0">
           <Zap className="h-3.5 w-3.5 text-[#08080A]" />
-        </div>
+        </div>*/}
         <div className="min-w-0 flex-1">
           <p className="text-sm font-black text-white leading-none tracking-tight">Growfy</p>
           <p className="text-[10px] text-white/25 leading-none mt-0.5">LaunchOS</p>

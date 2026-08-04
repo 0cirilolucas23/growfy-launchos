@@ -17,6 +17,7 @@ import { CrmOverview } from "@/components/crm-overview";
 import { apiFetch } from "@/lib/api-client";
 import { cn } from "@/lib/utils";
 
+
 // ─── Sparkline ───
 function Sparkline({ data, color }: { data: number[]; color: string }) {
   const pts = data.map((v, i) => ({ i, v }));

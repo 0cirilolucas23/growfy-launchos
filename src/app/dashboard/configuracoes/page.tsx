@@ -385,7 +385,7 @@ export default function WorkspaceSettingsPage() {
       <Section
         title="Kommo (CRM de leads)"
         description="Integração com pipeline de leads — habilita o Funil no menu lateral"
-      >
+     >
         <div className="flex items-center justify-between rounded-lg border border-white/[0.06] bg-white/[0.02] px-3 py-2.5">
           <div>
             <p className="text-xs font-semibold text-white/70">Habilitar Kommo neste workspace</p>
