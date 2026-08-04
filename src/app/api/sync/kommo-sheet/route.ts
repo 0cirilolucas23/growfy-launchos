@@ -37,14 +37,14 @@ function inferStageType(name: string): KommoStage["type"] {
 
 /**
  * Deriva a lista de etapas únicas presentes nas linhas processadas.
- * Ordem de sort segue a ordem em que apareceram na planilha.
+ * Ordem final: regulares (ordem de aparição na planilha) → perdidas → ganhas.
+ * Assim "Fechado - ganho" fica sempre por último no funil.
  */
 function deriveStagesFromRows(
   rows: string[][],
   headerIdx: ReturnType<typeof buildHeaderIndex>
 ): KommoStage[] {
   const seen = new Map<string, KommoStage>();
-  let sort = 0;
   const etapaCol = headerIdx.etapa;
   if (etapaCol < 0) return [];
   for (const row of rows) {
@@ -54,11 +54,15 @@ function deriveStagesFromRows(
     seen.set(raw, {
       id: raw,
       name: raw,
-      sort: sort++,
+      sort: 0, // ajustado abaixo
       type: inferStageType(raw),
     });
   }
-  return Array.from(seen.values());
+  const all = Array.from(seen.values());
+  const regular = all.filter((s) => s.type === "regular");
+  const lost = all.filter((s) => s.type === "lost");
+  const won = all.filter((s) => s.type === "won");
+  return [...regular, ...lost, ...won].map((s, i) => ({ ...s, sort: i }));
 }
 
 export const maxDuration = 60;

@@ -219,6 +219,8 @@ export default function WorkspacePage() {
   const { workspaces, setActiveWorkspace, isLoading } = useWorkspace();
   const [showCreate, setShowCreate] = useState(false);
 
+  const isStaff = /@growfy\.com\.br$/i.test(user?.email ?? "");
+
   function handleSelectWorkspace(workspace: Workspace) {
     setActiveWorkspace(workspace);
     router.push("/dashboard");
@@ -236,6 +238,9 @@ export default function WorkspacePage() {
     );
   }
 
+  // Nao-staff sem workspaces = aguardando aprovacao
+  const isPending = !isStaff && workspaces.length === 0;
+
   return (
     <div className="min-h-screen bg-[#08080A] flex items-center justify-center p-6">
       <div className="w-full max-w-md space-y-8">
@@ -251,20 +256,44 @@ export default function WorkspacePage() {
           </div>
         </div>
 
-        {/* Header */}
-        <div>
-          <h1 className="text-2xl font-black text-white tracking-tight">
-            {workspaces.length === 0 ? "Crie seu primeiro workspace" : "Selecione um workspace"}
-          </h1>
-          <p className="mt-1 text-sm text-white/30">
-            {workspaces.length === 0
-              ? "Um workspace representa um cliente ou projeto"
-              : `Olá, ${user?.displayName?.split(" ")[0] ?? "usuário"} — qual cliente quer acessar?`}
-          </p>
-        </div>
+        {/* Estado pending — usuario nao-staff sem workspaces */}
+        {isPending && (
+          <div className="space-y-4">
+            <div>
+              <h1 className="text-2xl font-black text-white tracking-tight">
+                Aguardando aprovação
+              </h1>
+              <p className="mt-2 text-sm text-white/40 leading-relaxed">
+                Olá, {user?.displayName?.split(" ")[0] ?? "usuário"}. Sua conta foi criada
+                com sucesso e nosso time já foi notificado. Assim que aprovarmos seu
+                acesso a um workspace, você receberá uma confirmação e poderá entrar.
+              </p>
+            </div>
+            <div className="rounded-xl border border-[#FAE125]/20 bg-[#FAE125]/5 p-4">
+              <p className="text-xs text-[#FAE125]/80 leading-relaxed">
+                📌 Se precisar acelerar, entre em contato com o administrador do sistema
+                informando o email <strong>{user?.email}</strong>.
+              </p>
+            </div>
+          </div>
+        )}
+
+        {/* Header (staff ou usuario com workspaces) */}
+        {!isPending && (
+          <div>
+            <h1 className="text-2xl font-black text-white tracking-tight">
+              {workspaces.length === 0 ? "Crie seu primeiro workspace" : "Selecione um workspace"}
+            </h1>
+            <p className="mt-1 text-sm text-white/30">
+              {workspaces.length === 0
+                ? "Um workspace representa um cliente ou projeto"
+                : `Olá, ${user?.displayName?.split(" ")[0] ?? "usuário"} — qual cliente quer acessar?`}
+            </p>
+          </div>
+        )}
 
         {/* Workspace list */}
-        {workspaces.length > 0 && !showCreate && (
+        {!isPending && workspaces.length > 0 && !showCreate && (
           <div className="space-y-2">
             {workspaces.map((ws) => (
               <WorkspaceCard
@@ -273,18 +302,21 @@ export default function WorkspacePage() {
                 onClick={() => handleSelectWorkspace(ws)}
               />
             ))}
-            <button
-              onClick={() => setShowCreate(true)}
-              className="w-full flex items-center gap-3 rounded-xl border border-dashed border-white/[0.08] p-4 text-sm text-white/30 hover:border-white/15 hover:text-white/50 transition-all"
-            >
-              <Plus className="h-4 w-4" />
-              Adicionar novo workspace
-            </button>
+            {/* Botao de adicionar workspace so aparece pra staff */}
+            {isStaff && (
+              <button
+                onClick={() => setShowCreate(true)}
+                className="w-full flex items-center gap-3 rounded-xl border border-dashed border-white/[0.08] p-4 text-sm text-white/30 hover:border-white/15 hover:text-white/50 transition-all"
+              >
+                <Plus className="h-4 w-4" />
+                Adicionar novo workspace
+              </button>
+            )}
           </div>
         )}
 
-        {/* Create form */}
-        {(workspaces.length === 0 || showCreate) && (
+        {/* Create form — so pra staff */}
+        {!isPending && isStaff && (workspaces.length === 0 || showCreate) && (
           <div className="space-y-4">
             {showCreate && (
               <button

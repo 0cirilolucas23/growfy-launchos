@@ -61,6 +61,36 @@ export default function LoginPage() {
     }
   }
 
+  /**
+   * Registra novo usuário como pending (aguardando aprovação) e notifica admins.
+   * Chamado apos signup ou primeiro login Google. Requer usuario ja logado
+   * (pra ter idToken).
+   */
+  async function notifyAdminOfNewUser(payload: {
+    name: string;
+    email: string;
+    provider: "email" | "google";
+    companyName?: string;
+    phone?: string;
+    role?: string;
+  }) {
+    try {
+      const currentUser = auth.currentUser;
+      if (!currentUser) return;
+      const idToken = await currentUser.getIdToken();
+      await fetch("/api/admin/notify-new-user", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${idToken}`,
+        },
+        body: JSON.stringify(payload),
+      });
+    } catch {
+      // Non-blocking — dashboard continua funcionando mesmo se email falhar
+    }
+  }
+
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     clear();
@@ -113,6 +143,16 @@ export default function LoginPage() {
       // Send welcome email
       await sendWelcomeEmail(fullName.trim(), email);
 
+      // Notifica admin do novo cadastro (usuario fica pending ate ser aprovado)
+      await notifyAdminOfNewUser({
+        name: fullName.trim(),
+        email,
+        provider: "email",
+        companyName: companyName.trim() || undefined,
+        phone: phone.trim() || undefined,
+        role: role.trim() || undefined,
+      });
+
       router.push("/workspace");
     } finally {
       setIsLoading(false);
@@ -124,8 +164,20 @@ export default function LoginPage() {
     setIsGoogleLoading(true);
     try {
       const result = await signInWithGoogle();
-      if (result.error) setError(result.error);
-      else router.push("/workspace");
+      if (result.error) {
+        setError(result.error);
+        return;
+      }
+      // Dispara notificacao (endpoint decide se ja e staff ou ja tem pending).
+      // Idempotente: chamada 2x nao duplica.
+      if (result.user) {
+        await notifyAdminOfNewUser({
+          name: result.user.displayName ?? "",
+          email: result.user.email ?? "",
+          provider: "google",
+        });
+      }
+      router.push("/workspace");
     } finally {
       setIsGoogleLoading(false);
     }
