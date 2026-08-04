@@ -81,6 +81,46 @@ async function fetchKiwifyMetrics(
 };
 
 // ─────────────────────────────────────────────
+// Kommo lead count — contagem total de leads (independente de status/type)
+// ─────────────────────────────────────────────
+interface KommoLeadCount {
+  totalLeads: number;
+  dailyLeads: Record<string, number>;
+}
+
+async function fetchKommoLeadCount(
+  workspaceId: string,
+  dateRange: MetaDateRange
+): Promise<KommoLeadCount> {
+  const since = new Date(dateRange.since + "T00:00:00");
+  const until = new Date(dateRange.until + "T23:59:59");
+
+  const q = query(
+    collection(db, "webhook_events"),
+    where("workspaceId", "==", workspaceId),
+    where("source", "==", "kommo")
+  );
+
+  const snapshot = await getDocs(q);
+  let totalLeads = 0;
+  const dailyLeads: Record<string, number> = {};
+
+  snapshot.forEach((doc) => {
+    const data = doc.data();
+    const ts: Date = data.timestamp instanceof Timestamp
+      ? data.timestamp.toDate()
+      : new Date(data.timestamp as string);
+    if (ts < since || ts > until) return;
+
+    totalLeads += 1;
+    const dayKey = ts.toISOString().slice(5, 10).replace("-", "/");
+    dailyLeads[dayKey] = (dailyLeads[dayKey] ?? 0) + 1;
+  });
+
+  return { totalLeads, dailyLeads };
+}
+
+// ─────────────────────────────────────────────
 // Kommo revenue — só total no período (Kommo não captura UTM)
 // A receita entra no workspace mas não casa com nenhuma campanha específica
 // ─────────────────────────────────────────────
@@ -375,7 +415,9 @@ function ChartTooltip({ active, payload, label }: { active?: boolean; payload?: 
         <div key={item.name} className="flex items-center gap-2">
           <span className="h-1.5 w-1.5 rounded-full" style={{ backgroundColor: item.color }} />
           <span className="text-white/30 capitalize">{item.name}:</span>
-          <span className="font-bold text-white">{formatCurrency(item.value)}</span>
+          <span className="font-bold text-white">
+            {item.name === "leads" ? formatNumber(item.value) : formatCurrency(item.value)}
+          </span>
         </div>
       ))}
     </div>
@@ -392,6 +434,7 @@ export default function MetaAdsPage() {
   const [apiData, setApiData] = useState<MetaAdsDashboardData | null>(null);
   const [kiwifyMetrics, setKiwifyMetrics] = useState<KiwifyMetrics | null>(null);
   const [kommoRevenue, setKommoRevenue] = useState<KommoRevenue | null>(null);
+  const [kommoLeadCount, setKommoLeadCount] = useState<KommoLeadCount | null>(null);
   const [isLive, setIsLive] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -429,20 +472,23 @@ export default function MetaAdsPage() {
       setIsLoading(false);
     }
 
-    // Kiwify + Kommo — receita do workspace pra reconciliação
+    // Kiwify + Kommo — receita do workspace pra reconciliação + contagem de leads
     if (workspaceId) {
       try {
-        const [kw, km] = await Promise.all([
+        const [kw, km, klc] = await Promise.all([
           fetchKiwifyMetrics(workspaceId, range),
           fetchKommoRevenue(workspaceId, range),
+          fetchKommoLeadCount(workspaceId, range),
         ]);
-        console.log("[Meta Ads] Kiwify:", kw, "Kommo:", km);
+        console.log("[Meta Ads] Kiwify:", kw, "Kommo:", km, "Kommo leads:", klc);
         setKiwifyMetrics(kw);
         setKommoRevenue(km);
+        setKommoLeadCount(klc);
       } catch (err) {
         console.error("[Meta Ads] Revenue fetch error:", err);
         setKiwifyMetrics(null);
         setKommoRevenue(null);
+        setKommoLeadCount(null);
       }
     }
   }, [workspaceId]);
@@ -565,15 +611,17 @@ export default function MetaAdsPage() {
   const crossRoas = metaSpend > 0 ? totalRevenue / metaSpend : 0;
   const crossCpa = totalSales > 0 ? metaSpend / totalSales : 0;
   const metrics = apiData?.metrics;
-  // Chart soma Kiwify + Kommo por dia
+  // Leads: prioriza contagem do Kommo (real do CRM). Se nao tem, fallback pra Meta metrics.leads.
+  const totalLeads = kommoLeadCount?.totalLeads ?? metrics?.leads ?? 0;
+  const leadsSource = kommoLeadCount && kommoLeadCount.totalLeads > 0 ? "Kommo" : "Meta Ads";
+  // Chart: investimento (Meta) + leads (Kommo) por dia
   const chartData = (apiData?.chartData ?? []).map((d) => {
     const dayKey = d.date.slice(5).replace("-", "/");
-    const kwDay = (kiwifyMetrics?.dailyRevenue[dayKey] ?? 0) * 2;
-    const kmDay = kommoRevenue?.dailyRevenue[dayKey] ?? 0;
+    const leadsDay = kommoLeadCount?.dailyLeads[dayKey] ?? 0;
     return {
       ...d,
       date: dayKey,
-      faturamento: kwDay + kmDay,
+      leads: leadsDay,
     };
   });
 
@@ -625,7 +673,7 @@ export default function MetaAdsPage() {
         ) : metrics ? (
           <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
             <KPI label="Investimento" value={formatCurrency(metaSpend)} accent="#E85D22" sub="Meta Ads" />
-            <KPI label="Faturamento" value={formatCurrency(totalRevenue)} accent="#00D861" sub={kommoRev > 0 ? "Kiwify + Kommo" : "Kiwify"} />
+            <KPI label="Leads" value={formatNumber(totalLeads)} accent="#5050F2" sub={leadsSource} />
             <KPI label="Vendas" value={formatNumber(totalSales)} accent="#5050F2" sub={kommoRev > 0 ? "Kiwify + Kommo" : "Kiwify"} />
             <KPI label="Sessões" value={formatNumber(metrics.landingPageViews)} accent="#FAE125" sub="Meta Ads" />
             <KPI label="ROAS" value={`${crossRoas.toFixed(2)}x`} accent="#00D861" sub="Faturamento ÷ Meta" />
@@ -643,24 +691,26 @@ export default function MetaAdsPage() {
         {/* Chart */}
         {chartData.length > 0 && (
           <div className="rounded-xl border border-white/[0.07] bg-white/[0.02] p-5">
-            <h2 className="mb-4 text-sm font-bold text-white">Investimento × Faturamento por dia</h2>
+            <h2 className="mb-4 text-sm font-bold text-white">Investimento × Leads por dia</h2>
             <ResponsiveContainer width="100%" height={200}>
               <LineChart data={chartData}>
                 <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.03)" />
                 <XAxis dataKey="date" tick={{ fontSize: 10, fill: "rgba(255,255,255,0.2)" }} tickLine={false} axisLine={false} />
-                <YAxis tick={{ fontSize: 10, fill: "rgba(255,255,255,0.2)" }} tickLine={false} axisLine={false} tickFormatter={(v: number) => v >= 1000 ? `${(v / 1000).toFixed(0)}k` : String(v)} />
+                <YAxis yAxisId="spend" tick={{ fontSize: 10, fill: "rgba(255,255,255,0.2)" }} tickLine={false} axisLine={false} tickFormatter={(v: number) => v >= 1000 ? `${(v / 1000).toFixed(0)}k` : String(v)} />
+                <YAxis yAxisId="leads" orientation="right" tick={{ fontSize: 10, fill: "rgba(255,255,255,0.2)" }} tickLine={false} axisLine={false} />
                 <Tooltip content={<ChartTooltip />} />
-                <Line type="monotone" dataKey="spend" stroke="#E85D22" strokeWidth={1.5} dot={false} name="investimento" />
-                <Line type="monotone" dataKey="faturamento" stroke="#00D861" strokeWidth={1.5} dot={false} name="faturamento" />
+                <Line yAxisId="spend" type="monotone" dataKey="spend" stroke="#E85D22" strokeWidth={1.5} dot={false} name="investimento" />
+                <Line yAxisId="leads" type="monotone" dataKey="leads" stroke="#5050F2" strokeWidth={1.5} dot={false} name="leads" />
               </LineChart>
             </ResponsiveContainer>
             <div className="mt-2 flex gap-4">
               <span className="flex items-center gap-1.5 text-[10px] text-white/25">
-                <span className="h-px w-3 bg-[#E85D22]" /> Investimento
+                <span className="h-px w-3 bg-[#E85D22]" /> Investimento (R$)
               </span>
               <span className="flex items-center gap-1.5 text-[10px] text-white/25">
-                <span className="h-px w-3 bg-[#00D861]" /> Faturamento
-              </span>            </div>
+                <span className="h-px w-3 bg-[#5050F2]" /> Leads (nº)
+              </span>
+            </div>
           </div>
         )}
 
