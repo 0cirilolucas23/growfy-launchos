@@ -5,7 +5,8 @@ import { usePathname, useRouter } from "next/navigation";
 import {
   LayoutDashboard, Search, Calculator, Settings,
   LogOut, Zap, Users, CreditCard, BarChart2,
-  Bell, Webhook, FileText, ChevronDown, Download, GitBranch
+  Bell, Webhook, FileText, ChevronDown, Download, GitBranch,
+  Shield,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { logout } from "@/lib/auth-service";
@@ -51,13 +52,14 @@ const sections: { label: string; items: NavItem[] }[] = [
       { href: "/dashboard/clientes", label: "Clientes", icon: Users, adminOnly: true },
       { href: "/dashboard/funil", label: "Funil de Leads", icon: GitBranch, adminOnly: false, requires: "leadPlatform" },
       { href: "/dashboard/pagamentos", label: "Pagamentos", icon: CreditCard, adminOnly: true },
-      { href: "/dashboard/relatorios", label: "Relatórios", icon: BarChart2, adminOnly: false },
+      { href: "/dashboard/relatorios", label: "Relatórios", icon: BarChart2, adminOnly: true },
     ],
   },
   {
     label: "Sistema",
     items: [
       { href: "/dashboard/configuracoes", label: "Configurações", icon: Settings, adminOnly: true },
+      { href: "/dashboard/admin/usuarios", label: "Aprovar Usuários", icon: Shield, adminOnly: true },
       { href: "/dashboard/webhooks", label: "Webhooks", icon: Webhook, adminOnly: true },
       { href: "/dashboard/notificacoes", label: "Notificações", icon: Bell, adminOnly: false },
       { href: "/dashboard/docs", label: "Documentação", icon: FileText, adminOnly: true },
