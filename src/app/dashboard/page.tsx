@@ -12,6 +12,7 @@ import { useMetrics, DateRange } from "@/hooks/use-metrics";
 import { useCrmMetrics, type CrmDateRange } from "@/hooks/use-crm-metrics";
 import { useAlerts } from "@/hooks/use-alerts";
 import { useWorkspace } from "@/contexts/workspace-context";
+import { useAuth } from "@/contexts/auth-context";
 import { formatCurrency, formatPercentage, formatNumber } from "@/lib/metrics-service";
 import { CrmOverview } from "@/components/crm-overview";
 import { apiFetch } from "@/lib/api-client";
@@ -206,6 +207,8 @@ export default function DashboardPage() {
   const [dateRange, setDateRange] = useState<DateRange>("30d");
   const [activeSince, setActiveSince] = useState<string | undefined>(undefined);
   const { activeWorkspace } = useWorkspace();
+  const { user } = useAuth();
+  const isAdmin = /@growfy\.com\.br$/i.test(user?.email ?? "");
 
   const [metaLeads, setMetaLeads] = useState(0);
   const [metaSessions, setMetaSessions] = useState(0);
@@ -306,19 +309,21 @@ export default function DashboardPage() {
 
   return (
     <div className="flex-1 flex flex-col overflow-hidden">
-      {/* Data source indicator */}
-      <div className={cn(
-        "flex items-center gap-2 px-6 py-1.5 text-xs border-b shrink-0",
-        isLive
-          ? "bg-[#00D861]/5 border-[#00D861]/15 text-[#00D861]/70"
-          : "bg-white/[0.02] border-white/[0.04] text-white/20"
-      )}>
-        {isLive ? <Wifi className="h-3 w-3" /> : <WifiOff className="h-3 w-3" />}
-        <span>{isLive ? "Dados reais — Firestore" : "Dados simulados — aguardando eventos reais"}</span>
-        {activeWorkspace && (
-          <span className="ml-2 opacity-50">· {activeWorkspace.name}</span>
-        )}
-      </div>
+      {/* Data source indicator — só admin vê */}
+      {isAdmin && (
+        <div className={cn(
+          "flex items-center gap-2 px-6 py-1.5 text-xs border-b shrink-0",
+          isLive
+            ? "bg-[#00D861]/5 border-[#00D861]/15 text-[#00D861]/70"
+            : "bg-white/[0.02] border-white/[0.04] text-white/20"
+        )}>
+          {isLive ? <Wifi className="h-3 w-3" /> : <WifiOff className="h-3 w-3" />}
+          <span>{isLive ? "Dados reais — Firestore" : "Dados simulados — aguardando eventos reais"}</span>
+          {activeWorkspace && (
+            <span className="ml-2 opacity-50">· {activeWorkspace.name}</span>
+          )}
+        </div>
+      )}
 
       <div className="flex-1 space-y-5 p-6 overflow-y-auto">
         {/* Header */}

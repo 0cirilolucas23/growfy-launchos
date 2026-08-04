@@ -7,6 +7,7 @@ import { RefreshCw, Wifi, WifiOff, Calendar, ChevronDown } from "lucide-react";
 import { collection, query, where, getDocs, Timestamp } from "firebase/firestore";
 import { db } from "@/lib/firebase";
 import { useWorkspace } from "@/contexts/workspace-context";
+import { useAuth } from "@/contexts/auth-context";
 import { apiFetch } from "@/lib/api-client";
 import type { MetaAdsDashboardData, MetaDateRange } from "@/lib/meta-ads-service";
 import { formatCurrency, formatNumber, formatPercentage } from "@/lib/metrics-service";
@@ -429,6 +430,8 @@ function ChartTooltip({ active, payload, label }: { active?: boolean; payload?: 
 // ─────────────────────────────────────────────
 export default function MetaAdsPage() {
   const { activeWorkspace: workspace } = useWorkspace();
+  const { user } = useAuth();
+  const isAdmin = /@growfy\.com\.br$/i.test(user?.email ?? "");
   const workspaceId = workspace?.id ?? null;
 
   const [apiData, setApiData] = useState<MetaAdsDashboardData | null>(null);
@@ -627,29 +630,41 @@ export default function MetaAdsPage() {
 
   return (
     <div className="flex-1 flex flex-col overflow-hidden">
-      {/* Status bar */}
-      <div className={cn(
-        "flex items-center gap-2 px-6 py-1.5 text-xs border-b shrink-0",
-        isLive ? "bg-[#00D861]/5 border-[#00D861]/15 text-[#00D861]/70" : "bg-[#FAE125]/5 border-[#FAE125]/15 text-[#FAE125]/70"
-      )}>
-        {isLive ? <Wifi className="h-3 w-3" /> : <WifiOff className="h-3 w-3" />}
-        <span>{isLive ? "Dados reais — API do Meta" : `Dados simulados${error ? ` — ${error}` : ""}`}</span>
-        {kiwifyMetrics && <span className="ml-2 text-[#00D861]/50">· Kiwify conectada</span>}
-        <button onClick={() => loadData(dateRange)} className="ml-auto flex items-center gap-1.5 opacity-50 hover:opacity-100 transition-opacity">
-          <RefreshCw className={cn("h-3 w-3", isLoading && "animate-spin")} />
-          Atualizar
-        </button>
-      </div>
+      {/* Status bar — só admin vê o indicador de fonte de dados */}
+      {isAdmin && (
+        <div className={cn(
+          "flex items-center gap-2 px-6 py-1.5 text-xs border-b shrink-0",
+          isLive ? "bg-[#00D861]/5 border-[#00D861]/15 text-[#00D861]/70" : "bg-[#FAE125]/5 border-[#FAE125]/15 text-[#FAE125]/70"
+        )}>
+          {isLive ? <Wifi className="h-3 w-3" /> : <WifiOff className="h-3 w-3" />}
+          <span>{isLive ? "Dados reais — API do Meta" : `Dados simulados${error ? ` — ${error}` : ""}`}</span>
+          {kiwifyMetrics && <span className="ml-2 text-[#00D861]/50">· Kiwify conectada</span>}
+          <button onClick={() => loadData(dateRange)} className="ml-auto flex items-center gap-1.5 opacity-50 hover:opacity-100 transition-opacity">
+            <RefreshCw className={cn("h-3 w-3", isLoading && "animate-spin")} />
+            Atualizar
+          </button>
+        </div>
+      )}
 
       <div className="flex-1 space-y-5 p-6 overflow-y-auto">
         {/* Header */}
-        <div className="flex items-center gap-3">
-          <div className="flex h-8 w-8 items-center justify-center rounded-lg border border-white/[0.08] bg-white/[0.04] text-white/60">
-            <svg viewBox="0 0 24 24" className="h-4 w-4" fill="currentColor">
-              <path d="M12 2.04c-5.5 0-10 4.49-10 10.02 0 5 3.66 9.15 8.44 9.9v-7H7.9v-2.9h2.54V9.85c0-2.51 1.49-3.89 3.78-3.89 1.09 0 2.23.19 2.23.19v2.47h-1.26c-1.24 0-1.63.77-1.63 1.56v1.88h2.78l-.45 2.9h-2.33v7a10 10 0 0 0 8.44-9.9c0-5.53-4.5-10.02-10-10.02z" />
-            </svg>
+        <div className="flex items-center justify-between gap-3">
+          <div className="flex items-center gap-3">
+            <div className="flex h-8 w-8 items-center justify-center rounded-lg border border-white/[0.08] bg-white/[0.04] text-white/60">
+              <svg viewBox="0 0 24 24" className="h-4 w-4" fill="currentColor">
+                <path d="M12 2.04c-5.5 0-10 4.49-10 10.02 0 5 3.66 9.15 8.44 9.9v-7H7.9v-2.9h2.54V9.85c0-2.51 1.49-3.89 3.78-3.89 1.09 0 2.23.19 2.23.19v2.47h-1.26c-1.24 0-1.63.77-1.63 1.56v1.88h2.78l-.45 2.9h-2.33v7a10 10 0 0 0 8.44-9.9c0-5.53-4.5-10.02-10-10.02z" />
+              </svg>
+            </div>
+            <h1 className="text-lg font-black text-white tracking-tight">Meta Ads</h1>
           </div>
-          <h1 className="text-lg font-black text-white tracking-tight">Meta Ads</h1>
+          <button
+            onClick={() => loadData(dateRange)}
+            disabled={isLoading}
+            className="flex h-8 w-8 items-center justify-center rounded-lg border border-white/[0.07] bg-white/[0.03] text-white/40 hover:bg-white/[0.06] transition-all disabled:opacity-50"
+            title="Atualizar"
+          >
+            <RefreshCw className={cn("h-3.5 w-3.5", isLoading && "animate-spin")} />
+          </button>
         </div>
 
         <DateRangePicker onChange={handleDateChange} />
