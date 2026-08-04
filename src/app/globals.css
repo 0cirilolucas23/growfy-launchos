@@ -2,136 +2,174 @@
 @tailwind components;
 @tailwind utilities;
 
+/* ============================================================
+   GROWFY LAUNCHOS — DESIGN SYSTEM
+   Cores extraídas do Figma (GR_26). 5 famílias × 7 tons:
+     PURPLE (accent brand), GREEN (success), YELLOW (warning),
+     ORANGE (destructive/error), MAIN (neutros).
+   Referência HEX ao lado dos HSL em cada var.
+   ============================================================ */
+
 @layer base {
   :root {
-    /* ========================================
-       GROWFY LAUNCHOS - CSS VARIABLES
-       shadcn/ui New York variant (light default)
-       ======================================== */
+    /* ---- BASE (light mode como padrão) ---- */
+    --background: 0 0% 100%;              /* #FFFFFF */
+    --foreground: 240 12% 10%;            /* #17171C — MAIN 200 light */
 
-    --background: 0 0% 100%;
-    --foreground: 0 0% 9%;
+    --card: 0 0% 100%;                    /* #FFFFFF */
+    --card-foreground: 240 12% 10%;       /* #17171C */
 
-    --card: 0 0% 100%;
-    --card-foreground: 0 0% 9%;
+    --popover: 0 0% 100%;                 /* #FFFFFF */
+    --popover-foreground: 240 12% 10%;    /* #17171C */
 
-    --popover: 0 0% 100%;
-    --popover-foreground: 0 0% 9%;
+    /* Growfy Purple 300 — brand accent */
+    --primary: 240 87% 63%;               /* #5050F2 — PURPLE 300 */
+    --primary-foreground: 0 0% 100%;      /* #FFFFFF */
 
-    --primary: 0 0% 13%;
-    --primary-foreground: 0 0% 98%;
+    --secondary: 0 0% 89%;                /* #E2E2E2 — MAIN 50 light */
+    --secondary-foreground: 240 12% 10%;  /* #17171C */
 
-    --secondary: 0 0% 96%;
-    --secondary-foreground: 0 0% 13%;
+    --muted: 0 0% 89%;                    /* #E2E2E2 */
+    --muted-foreground: 240 5% 66%;       /* #A5A5AC — MAIN 100 */
 
-    --muted: 0 0% 96%;
-    --muted-foreground: 0 0% 45%;
+    --accent: 240 87% 92%;                /* #D3D3FC — PURPLE 50 */
+    --accent-foreground: 240 87% 63%;     /* #5050F2 */
 
-    --accent: 0 0% 96%;
-    --accent-foreground: 0 0% 13%;
+    /* Growfy Orange 300 */
+    --destructive: 18 82% 53%;            /* #E85D22 — ORANGE 300 */
+    --destructive-foreground: 0 0% 100%;  /* #FFFFFF */
 
-    --destructive: 14 85% 51%;
-    --destructive-foreground: 0 0% 98%;
-
-    --border: 0 0% 89%;
-    --input: 0 0% 89%;
-    --ring: 0 0% 63%;
+    --border: 0 0% 89%;                   /* #E2E2E2 */
+    --input: 0 0% 89%;                    /* #E2E2E2 */
+    --ring: 240 87% 63%;                  /* #5050F2 */
 
     --radius: 0.625rem;
 
-    --chart-1: 0 0% 80%;
-    --chart-2: 0 0% 45%;
-    --chart-3: 0 0% 32%;
-    --chart-4: 0 0% 25%;
-    --chart-5: 0 0% 15%;
+    /* Charts — 1 por família Growfy */
+    --chart-1: 240 87% 63%;               /* #5050F2 — PURPLE 300 */
+    --chart-2: 147 100% 42%;              /* #00D861 — GREEN 300/400 */
+    --chart-3: 53 96% 56%;                /* #FAE125 — YELLOW 300/400 */
+    --chart-4: 18 82% 53%;                /* #E85D22 — ORANGE 300 */
+    --chart-5: 240 87% 82%;               /* #A7A7F8 — PURPLE 100 */
 
-    --sidebar: 0 0% 98%;
-    --sidebar-foreground: 0 0% 9%;
-    --sidebar-primary: 0 0% 13%;
-    --sidebar-primary-foreground: 0 0% 98%;
-    --sidebar-accent: 0 0% 96%;
-    --sidebar-accent-foreground: 0 0% 13%;
-    --sidebar-border: 0 0% 89%;
-    --sidebar-ring: 0 0% 63%;
+    --sidebar: 0 0% 100%;                 /* #FFFFFF */
+    --sidebar-foreground: 240 12% 10%;    /* #17171C */
+    --sidebar-primary: 240 87% 63%;       /* #5050F2 */
+    --sidebar-primary-foreground: 0 0% 100%;
+    --sidebar-accent: 240 87% 92%;        /* #D3D3FC */
+    --sidebar-accent-foreground: 240 87% 63%;
+    --sidebar-border: 0 0% 89%;           /* #E2E2E2 */
+    --sidebar-ring: 240 87% 63%;
+
+    /* Semantic custom */
+    --success: 147 100% 42%;              /* #00D861 */
+    --success-foreground: 0 0% 100%;
+    --warning: 53 96% 56%;                /* #FAE125 */
+    --warning-foreground: 240 12% 10%;    /* #17171C */
+    --info: 240 87% 63%;                  /* #5050F2 */
+    --info-foreground: 0 0% 100%;
   }
 
   .light {
-    --background: 0 0% 100%;
-    --foreground: 222 84% 5%;
+    /* Alias explícito do modo padrão pra suportar toggle .light manual */
+    --background: 0 0% 100%;              /* #FFFFFF */
+    --foreground: 240 12% 10%;            /* #17171C */
 
     --card: 0 0% 100%;
-    --card-foreground: 222 84% 5%;
+    --card-foreground: 240 12% 10%;
 
     --popover: 0 0% 100%;
-    --popover-foreground: 222 84% 5%;
+    --popover-foreground: 240 12% 10%;
 
-    --primary: 242 89% 63%;
-    --primary-foreground: 210 40% 98%;
+    --primary: 240 87% 63%;               /* #5050F2 */
+    --primary-foreground: 0 0% 100%;
 
-    --secondary: 210 40% 96%;
-    --secondary-foreground: 222 47% 11%;
+    --secondary: 0 0% 89%;                /* #E2E2E2 */
+    --secondary-foreground: 240 12% 10%;
 
-    --muted: 210 40% 96%;
-    --muted-foreground: 215 16% 47%;
+    --muted: 0 0% 89%;
+    --muted-foreground: 240 5% 66%;       /* #A5A5AC */
 
-    --accent: 145 100% 42%;
-    --accent-foreground: 222 47% 11%;
+    --accent: 240 87% 92%;                /* #D3D3FC */
+    --accent-foreground: 240 87% 63%;
 
-    --destructive: 14 85% 51%;
-    --destructive-foreground: 210 40% 98%;
+    --destructive: 18 82% 53%;            /* #E85D22 */
+    --destructive-foreground: 0 0% 100%;
 
-    --border: 214 32% 91%;
-    --input: 214 32% 91%;
-    --ring: 242 89% 63%;
+    --border: 0 0% 89%;
+    --input: 0 0% 89%;
+    --ring: 240 87% 63%;
+
+    --chart-1: 240 87% 63%;
+    --chart-2: 147 100% 42%;
+    --chart-3: 53 96% 56%;
+    --chart-4: 18 82% 53%;
+    --chart-5: 240 87% 82%;
+
+    --sidebar: 0 0% 100%;
+    --sidebar-foreground: 240 12% 10%;
+    --sidebar-primary: 240 87% 63%;
+    --sidebar-primary-foreground: 0 0% 100%;
+    --sidebar-accent: 240 87% 92%;
+    --sidebar-accent-foreground: 240 87% 63%;
+    --sidebar-border: 0 0% 89%;
+    --sidebar-ring: 240 87% 63%;
   }
 
   .dark {
-    /* Growfy dark: #08080A background */
-    --background: 240 5% 4%;
-    --foreground: 0 0% 98%;
+    /* MAIN 400 dark #08090A — background principal do dash atual (#08080A) */
+    --background: 240 11% 4%;             /* #08090A */
+    --foreground: 210 8% 97%;             /* #F7F8F8 — MAIN 50 dark */
 
-    --card: 240 4% 13%;
-    --card-foreground: 0 0% 98%;
+    --card: 240 5% 12%;                   /* #1C1C1F — MAIN 300 dark */
+    --card-foreground: 210 8% 97%;
 
-    --popover: 240 4% 13%;
-    --popover-foreground: 0 0% 98%;
+    --popover: 240 5% 12%;                /* #1C1C1F */
+    --popover-foreground: 210 8% 97%;
 
-    /* Growfy Purple #5050F2 */
-    --primary: 242 89% 63%;
-    --primary-foreground: 0 0% 98%;
+    /* Growfy Purple 300 (mesma em ambos os modos) */
+    --primary: 240 87% 63%;               /* #5050F2 */
+    --primary-foreground: 210 8% 97%;     /* #F7F8F8 */
 
-    --secondary: 240 4% 16%;
-    --secondary-foreground: 0 0% 98%;
+    --secondary: 240 4% 18%;              /* #2C2C2F — MAIN 200 dark */
+    --secondary-foreground: 210 8% 97%;
 
-    --muted: 240 4% 16%;
-    --muted-foreground: 0 0% 64%;
+    --muted: 240 4% 18%;                  /* #2C2C2F */
+    --muted-foreground: 240 5% 66%;       /* #A5A5AC */
 
-    /* Growfy Green #00D861 */
-    --accent: 145 100% 42%;
-    --accent-foreground: 240 5% 4%;
+    /* Growfy Green 300 como accent (destaque positivo) */
+    --accent: 147 100% 42%;               /* #00D861 */
+    --accent-foreground: 240 11% 4%;      /* #08090A */
 
-    /* Growfy Orange #E85D22 */
-    --destructive: 21 81% 52%;
-    --destructive-foreground: 0 0% 98%;
+    /* Growfy Orange 300 (destructive) */
+    --destructive: 18 82% 53%;            /* #E85D22 */
+    --destructive-foreground: 210 8% 97%;
 
-    --border: 240 4% 18%;
-    --input: 240 4% 20%;
-    --ring: 0 0% 56%;
+    --border: 240 4% 18%;                 /* #2C2C2F */
+    --input: 240 4% 18%;                  /* #2C2C2F */
+    --ring: 240 87% 63%;                  /* #5050F2 */
 
-    --chart-1: 0 0% 80%;
-    --chart-2: 0 0% 45%;
-    --chart-3: 0 0% 32%;
-    --chart-4: 0 0% 25%;
-    --chart-5: 0 0% 15%;
+    --chart-1: 240 87% 63%;               /* #5050F2 */
+    --chart-2: 147 100% 42%;              /* #00D861 */
+    --chart-3: 53 96% 56%;                /* #FAE125 */
+    --chart-4: 18 82% 53%;                /* #E85D22 */
+    --chart-5: 240 87% 82%;               /* #A7A7F8 */
 
-    --sidebar: 240 4% 13%;
-    --sidebar-foreground: 0 0% 98%;
-    --sidebar-primary: 242 89% 63%;
-    --sidebar-primary-foreground: 0 0% 98%;
-    --sidebar-accent: 240 4% 16%;
-    --sidebar-accent-foreground: 0 0% 98%;
+    --sidebar: 240 11% 4%;                /* #08090A */
+    --sidebar-foreground: 210 8% 97%;
+    --sidebar-primary: 240 87% 63%;
+    --sidebar-primary-foreground: 210 8% 97%;
+    --sidebar-accent: 240 4% 18%;
+    --sidebar-accent-foreground: 210 8% 97%;
     --sidebar-border: 240 4% 18%;
-    --sidebar-ring: 0 0% 56%;
+    --sidebar-ring: 240 87% 63%;
+
+    --success: 147 100% 42%;              /* #00D861 */
+    --success-foreground: 240 11% 4%;
+    --warning: 53 96% 56%;                /* #FAE125 */
+    --warning-foreground: 240 11% 4%;
+    --info: 240 87% 63%;                  /* #5050F2 */
+    --info-foreground: 210 8% 97%;
   }
 
   .theme {
@@ -152,7 +190,7 @@
     @apply font-sans;
   }
 
-  /* Scrollbar dark mode */
+  /* Scrollbar segue o tema atual */
   ::-webkit-scrollbar {
     @apply w-2;
   }
