@@ -617,16 +617,26 @@ export default function MetaAdsPage() {
   // Leads: prioriza contagem do Kommo (real do CRM). Se nao tem, fallback pra Meta metrics.leads.
   const totalLeads = kommoLeadCount?.totalLeads ?? metrics?.leads ?? 0;
   const leadsSource = kommoLeadCount && kommoLeadCount.totalLeads > 0 ? "Kommo" : "Meta Ads";
-  // Chart: investimento (Meta) + leads (Kommo) por dia
-  const chartData = (apiData?.chartData ?? []).map((d) => {
-    const dayKey = d.date.slice(5).replace("-", "/");
-    const leadsDay = kommoLeadCount?.dailyLeads[dayKey] ?? 0;
-    return {
-      ...d,
+  // Chart: gera TODOS os dias do periodo (union Meta ∪ Kommo).
+  // Antes, so aparecia dia se o Meta retornou dado — leads Kommo em dias
+  // sem gasto Meta sumiam do grafico.
+  const metaByDay = new Map(
+    (apiData?.chartData ?? []).map((d) => [
+      d.date.slice(5).replace("-", "/"),
+      d,
+    ])
+  );
+  const chartData: Array<{ date: string; spend: number; leads: number }> = [];
+  const start = new Date(dateRange.since + "T00:00:00");
+  const end = new Date(dateRange.until + "T23:59:59");
+  for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
+    const dayKey = d.toISOString().slice(5, 10).replace("-", "/");
+    chartData.push({
       date: dayKey,
-      leads: leadsDay,
-    };
-  });
+      spend: metaByDay.get(dayKey)?.spend ?? 0,
+      leads: kommoLeadCount?.dailyLeads[dayKey] ?? 0,
+    });
+  }
 
   return (
     <div className="flex-1 flex flex-col overflow-hidden">
