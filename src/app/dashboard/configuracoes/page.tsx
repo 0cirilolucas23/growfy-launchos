@@ -67,7 +67,9 @@ function CopyButton({ value }: { value: string }) {
 }
 
 function WebhookURL({ platform, workspaceId }: { platform: string; workspaceId: string }) {
-  const url = `https://growfy-launchos.vercel.app/api/webhooks/${platform}?workspace=${workspaceId}`;
+  const baseUrl =
+    process.env.NEXT_PUBLIC_APP_URL ?? "https://growfy-launchos.vercel.app";
+  const url = `${baseUrl}/api/webhooks/${platform}?workspace=${workspaceId}`;
   return (
     <div className="flex items-center gap-2 rounded-lg border border-white/[0.06] bg-white/[0.02] px-3 py-2">
       <code className="flex-1 truncate text-[11px] text-white/40 font-mono">{url}</code>

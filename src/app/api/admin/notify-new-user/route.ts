@@ -34,6 +34,7 @@ async function sendAdminEmail(user: {
 }) {
   const RESEND_API_KEY = process.env.RESEND_API_KEY;
   const FROM = process.env.ALERT_EMAIL_FROM ?? "Growfy LaunchOS <noreply@growfy.com.br>";
+  const APP_URL = process.env.NEXT_PUBLIC_APP_URL ?? "https://growfy-launchos.vercel.app";
   const admins = getAdminEmails();
   if (!RESEND_API_KEY || admins.length === 0) {
     console.warn(
@@ -67,7 +68,7 @@ async function sendAdminEmail(user: {
         <p style="margin: 4px 0;"><strong>Login via:</strong> ${user.provider}</p>
         <p style="margin: 4px 0; font-family: monospace; font-size: 11px; color: #999;"><strong>UID:</strong> ${user.uid}</p>
       </div>
-      <a href="https://growfy-launchos.vercel.app/dashboard/admin/usuarios"
+      <a href="${APP_URL}/dashboard/admin/usuarios"
         style="display: block; background: #5050F2; color: white; text-align: center; padding: 12px; border-radius: 8px; font-weight: 700; font-size: 13px; text-decoration: none;">
         Aprovar e vincular a workspace →
       </a>

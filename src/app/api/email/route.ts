@@ -10,6 +10,7 @@ export async function POST(req: NextRequest) {
 
     const RESEND_API_KEY = process.env.RESEND_API_KEY;
     const FROM = process.env.ALERT_EMAIL_FROM ?? "Growfy LaunchOS <noreply@growfy.com.br>";
+    const APP_URL = process.env.NEXT_PUBLIC_APP_URL ?? "https://growfy-launchos.vercel.app";
 
     if (!RESEND_API_KEY) {
       console.warn("⚠️ RESEND_API_KEY não configurado");
@@ -47,7 +48,7 @@ export async function POST(req: NextRequest) {
           <li>Usar a calculadora de Engenharia Reversa</li>
         </ul>
       </div>
-      <a href="https://growfy-launchos.vercel.app/workspace"
+      <a href="${APP_URL}/workspace"
         style="display: block; background: #5050F2; color: white; text-align: center; padding: 14px; border-radius: 10px; font-weight: 700; font-size: 14px; text-decoration: none;">
         Acessar o Dashboard →
       </a>
